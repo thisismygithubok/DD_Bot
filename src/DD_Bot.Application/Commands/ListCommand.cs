@@ -84,57 +84,48 @@ namespace DD_Bot.Application.Commands
                         allowedContainers.AddRange(settings.RoleStopPermissions[role.Id]);
                     }
                 }
-                allowedContainers.Distinct();
+                allowedContainers = allowedContainers.Distinct().ToList();
             }
             
             int maxLength = dockerService.DockerStatusLongestName();
             maxLength++;
-            if (maxLength< 15)
+            if (maxLength < 15)
             {
                 maxLength = 15;
             }
             string outputHeader = new string('¯', 13 + maxLength)
-                            + "\n| Containername "
+                            + "\n| Container Name "
                             + new string(' ', maxLength - 14)
-                            + "| Status  |\n"
+                            + "| Status |\n"
                             + new string('¯', 13 + maxLength)
                             + "\n";
             
             string outputFooter = new string('¯', 13 + maxLength) + "\n" + "```";
             
-            if (dockerService.DockerStatus.Count > dockerService.Settings.ContainersPerMessage)
+            var sections = dockerService.DockerStatus
+                            .GroupBy(c => c.Labels.ContainsKey("section") ? c.Labels["section"] : "Uncategorized")
+                            .Select(g => new ContainerSection
+                            {
+                                SectionName = g.Key,
+                                Containers = g.ToList()
+                            })
+                            .ToList();
+            
+            foreach (var section in sections)
             {
-                string output;
-                string outputList;
-                List < List < ContainerListResponse >> partitionedContainerList =
-                    dockerService.DockerStatus.Partition(dockerService.Settings.ContainersPerMessage);
-                for (int i = 0; i < partitionedContainerList.Count; i++)
+                string output = $"### {section.SectionName} ###\n```\n" + outputHeader;
+
+                output += FormatListObjects(section.Containers, settings, maxLength, arg, allowedContainers);
+                output += outputFooter;
+
+                if (sections.IndexOf(section) == 0)
                 {
-                    output = String.Empty;
-                    outputList = FormatListObjects(partitionedContainerList[i], settings, maxLength, arg, allowedContainers);
-
-                    int n = i + 1;
-                    output = $"**List of all known Containers ({n}/{partitionedContainerList.Count})**\n```\n" +  outputHeader + outputList + outputFooter;
-                    
-                    if (i == 0)
-                    {
-                        await arg.ModifyOriginalResponseAsync(edit => edit.Content =output);
-                    }
-                    else
-                    {
-                        await arg.Channel.SendMessageAsync(output);
-                    }
+                    await arg.ModifyOriginalResponseAsync(edit => edit.Content = output);
                 }
-
-
-
-                //arg.Channel.SendMessageAsync("");
-            }
-            else
-            {
-                string outputList = FormatListObjects(dockerService.DockerStatus, settings, maxLength, arg, allowedContainers);
-                string output = "**List of all known Containers**\n```\n" + outputHeader + outputList + outputFooter;
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = output);
+                else
+                {
+                    await arg.Channel.SendMessageAsync(output);
+                }
             }
         }
 
@@ -160,7 +151,12 @@ namespace DD_Bot.Application.Commands
             return outputList;
         }
 
-        #endregion
+        private class ContainerSection
+        {
+            public string SectionName { get; set; }
+            public List<ContainerListResponse> Containers { get; set; }
+        }
 
+        #endregion
     }
 }
