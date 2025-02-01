@@ -14,12 +14,16 @@
 ## NEW: Container Labels for Section Outputs
 
 - Add a label to your docker container via the labels instruction
+
+    '''json
     - container:
         image: ...
         ...
         labels:
             section: "Game Server"
 - Add a new section in settings.json's "DiscordSettings" to set this order based on labels
+
+    '''json
     - "DiscordSettings": {
         "Token": "",
         "AdminIDs": [],
