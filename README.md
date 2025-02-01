@@ -100,3 +100,12 @@
 ### If you like my work, feel free to buy me a coffee
 <p>
 <br><a href="https://www.buymeacoffee.com/assaro"> <img align="left" src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="50" width="210" alt="assaro" /></a></p>
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for more details.
+
+## Attribution
+
+This project is a fork of the original repository by https://github.com/Assaro/DD_Bot. Significant modifications have been made by https://github.com/thisismygithubok/DD_Bot on 1 Feb 2025. Changes include: Added categories/sections based on container labels.
+
