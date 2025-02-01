@@ -15,7 +15,7 @@
 
 - Add a label to your docker container via the labels instruction
 
-    '''json
+    ```json
     {
     container:
         image: ...
@@ -25,7 +25,7 @@
     }
 - Add a new section in settings.json's "DiscordSettings" to set this order based on labels
 
-    '''json
+    ```json
     {
         "DiscordSettings": {
             "Token": "",
