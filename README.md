@@ -15,34 +15,40 @@
 
 - Add a label to your docker container via the labels instruction
 
-    ```json
+    ```yml
     {
     container:
         image: ...
         ...
         labels:
-            section: "Game Server"
+            section: "Game Servers",
+
+    container2:
+        image: ...
+        ...
+        labels:
+            section: "Frontend"
     }
 - Add a new section in settings.json's "DiscordSettings" to set this order based on labels
 
     ```json
     {
-        "DiscordSettings": {
-            "Token": "",
-            "AdminIDs": [],
-            "UserWhitelist": true,
-            "UserIDs": [],
-            "UsersCanStopContainers": true,
-            "AllowedContainers": [],
-            "RoleStartPermissions": {},
-            "RoleStopPermissions": {},
-            "UserStartPermissions": {},
-            "UserStopPermissions": {},
-            "SectionOrder": [
-                "Game Servers",
-                "Frontend"
-            ]
-        }
+    "DiscordSettings": {
+        "Token": "",
+        "AdminIDs": [],
+        "UserWhitelist": true,
+        "UserIDs": [],
+        "UsersCanStopContainers": true,
+        "AllowedContainers": [],
+        "RoleStartPermissions": {},
+        "RoleStopPermissions": {},
+        "UserStartPermissions": {},
+        "UserStopPermissions": {},
+        "SectionOrder": [
+            "Game Servers",
+            "Frontend"
+        ]
+    }
     }
 - Output of /list will now separate into separate tables based on these labels and ordering
     - ![List Command Sections](pics/ListCommandSections.png)
