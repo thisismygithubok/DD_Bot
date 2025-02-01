@@ -3,10 +3,10 @@
 
 <p align="center">A Discord-Bot to start and stop Docker Containers, using the Docker Socket</p>
 <p align="center">
-<a href="https://hub.docker.com/r/assaro/ddbot"><img alt="Docker Image Size (tag)" src="https://img.shields.io/docker/image-size/assaro/ddbot/latest?style=for-the-badge">
-<img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/assaro/ddbot?style=for-the-badge"></a>
-<img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/assaro/DD_Bot?color=brightgreen&style=for-the-badge">
-<img alt="GitHub" src="https://img.shields.io/github/license/assaro/dd_bot?style=for-the-badge"></p>
+<a href="https://hub.docker.com/r/thisismynameok/docker-discord-bot"><img alt="Docker Image Size (tag)" src="https://img.shields.io/docker/image-size/thisismynameok/docker-discord-bot/latest?style=for-the-badge">
+<img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/thisismynameok/docker-discord-bot?style=for-the-badge"></a>
+<img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/thisismygithubok/DD_Bot?color=brightgreen&style=for-the-badge">
+<img alt="GitHub" src="https://img.shields.io/github/license/thisismygithubok/DD_Bot?style=for-the-badge"></p>
 
 `"Conveniently, the program itself can be used as a Docker Container"` - ***Gadget Gabe*** \
 **NEW: Now with commands to adjust permissions** 
