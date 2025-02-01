@@ -1,5 +1,5 @@
 <h1 align="center">DD_Bot</h1>
-<h1 align="center">This custom fork has added categories based on container labels</h1>
+<h1 align="center">This custom fork has added categories/sections based on container labels</h1>
 
 <p align="center">A Discord-Bot to start and stop Docker Containers, using the Docker Socket</p>
 <p align="center">
@@ -10,6 +10,34 @@
 
 `"Conveniently, the program itself can be used as a Docker Container"` - ***Gadget Gabe*** \
 **NEW: Now with commands to adjust permissions** 
+
+## NEW: Container Labels for Section Outputs
+
+- Add a label to your docker container via the labels instruction
+    - container:
+        image: ...
+        ...
+        labels:
+            section: "Game Server"
+- Add a new section in settings.json's "DiscordSettings" to set this order based on labels
+    - "DiscordSettings": {
+        "Token": "",
+        "AdminIDs": [],
+        "UserWhitelist": true,
+        "UserIDs": [],
+        "UsersCanStopContainers": true,
+        "AllowedContainers": [],
+        "RoleStartPermissions": {},
+        "RoleStopPermissions": {},
+        "UserStartPermissions": {},
+        "UserStopPermissions": {},
+        "SectionOrder": [
+            "Game Servers",
+            "Frontend"
+        ]
+    }
+- Output of /list will now separate into separate tables based on these labels and ordering
+    - ![List Command Sections](pics/ListCommandSections.png)
 
 ## Screenshots
 
