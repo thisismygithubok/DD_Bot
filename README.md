@@ -1,4 +1,5 @@
 <h1 align="center">DD_Bot</h1>
+<h1 align="center">This custom fork has added categories based on container labels</h1>
 
 <p align="center">A Discord-Bot to start and stop Docker Containers, using the Docker Socket</p>
 <p align="center">
