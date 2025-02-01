@@ -51,7 +51,7 @@
     }
     }
 - Output of /list will now separate into separate tables based on these labels and ordering
-    - ![List Command Sections](pics/ListCommandSections.png)
+![List Command Sections](pics/ListCommandSections.png)
 
 ## Screenshots
 
