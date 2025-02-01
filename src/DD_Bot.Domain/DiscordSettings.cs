@@ -36,5 +36,6 @@ namespace DD_Bot.Domain
         public Dictionary<ulong, List<string>> RoleStopPermissions { get; set; } = new Dictionary<ulong, List<string>>();
         public Dictionary<ulong, List<string>> UserStartPermissions { get; set; } = new Dictionary<ulong, List<string>>();
         public Dictionary<ulong, List<string>> UserStopPermissions { get; set; } = new Dictionary<ulong, List<string>>();
+        public List<string> SectionOrder { get; set; } // New setting for section order
     }
 }

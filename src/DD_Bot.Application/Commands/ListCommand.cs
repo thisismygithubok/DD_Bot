@@ -42,7 +42,7 @@ namespace DD_Bot.Application.Commands
             var builder = new SlashCommandBuilder()
             {
                 Name = "list",
-                Description = " List all Docker containers"
+                Description = "List all Docker containers"
             };
             return builder.Build();
         }
@@ -56,21 +56,21 @@ namespace DD_Bot.Application.Commands
             await arg.RespondAsync("Contacting Docker Service...");
             await dockerService.DockerUpdate();
             List<string> allowedContainers = new List<string>();
-            
+
             if (!settings.AdminIDs.Contains(arg.User.Id))
             {
                 var socketUser = arg.User as SocketGuildUser;
                 var guild = socketUser.Guild;
                 var socketGuildUser = guild.GetUser(socketUser.Id);
                 var userRoles = socketGuildUser.Roles;
-                
+
                 if (settings.UserStartPermissions.ContainsKey(arg.User.Id))
                 {
-                    allowedContainers.AddRange(settings.UserStartPermissions[arg.User.Id]);   
+                    allowedContainers.AddRange(settings.UserStartPermissions[arg.User.Id]);
                 }
                 if (settings.UserStopPermissions.ContainsKey(arg.User.Id))
                 {
-                    allowedContainers.AddRange(settings.UserStopPermissions[arg.User.Id]);   
+                    allowedContainers.AddRange(settings.UserStopPermissions[arg.User.Id]);
                 }
 
                 foreach (var role in userRoles)
@@ -84,57 +84,61 @@ namespace DD_Bot.Application.Commands
                         allowedContainers.AddRange(settings.RoleStopPermissions[role.Id]);
                     }
                 }
-                allowedContainers.Distinct();
+                allowedContainers = allowedContainers.Distinct().ToList();
             }
-            
-            int maxLength = dockerService.DockerStatusLongestName();
-            maxLength++;
-            if (maxLength< 15)
+
+            int maxLength = dockerService.DockerStatusLongestName() + 1;
+            if (maxLength > 28)  // Ensure a maximum column width for "Container Name"
             {
-                maxLength = 15;
+                maxLength = 28;
             }
-            string outputHeader = new string('¯', 13 + maxLength)
-                            + "\n| Containername "
+
+            int statusColumnLength = 8; // Adjust length for "Status" column
+            int totalLength = maxLength + statusColumnLength + 4; // Adjust total length calculation
+
+            string outputHeader = new string('-', totalLength + 1)
+                            + "\n| Container Name"
                             + new string(' ', maxLength - 14)
-                            + "| Status  |\n"
-                            + new string('¯', 13 + maxLength)
+                            + " | Status  |\n" // Adjusted spacing for alignment
+                            + new string('-', totalLength + 1)
                             + "\n";
-            
-            string outputFooter = new string('¯', 13 + maxLength) + "\n" + "```";
-            
-            if (dockerService.DockerStatus.Count > dockerService.Settings.ContainersPerMessage)
+
+            string outputFooter = new string('-', totalLength + 1) + "\n" + "```";
+
+            var sections = dockerService.DockerStatus
+                            .GroupBy(c => c.Labels.ContainsKey("section") ? c.Labels["section"] : "Uncategorized")
+                            .Select(g => new ContainerSection
+                            {
+                                SectionName = g.Key,
+                                Containers = g.ToList()
+                            })
+                            .ToList();
+
+            if (settings.SectionOrder != null && settings.SectionOrder.Any())
             {
-                string output;
-                string outputList;
-                List < List < ContainerListResponse >> partitionedContainerList =
-                    dockerService.DockerStatus.Partition(dockerService.Settings.ContainersPerMessage);
-                for (int i = 0; i < partitionedContainerList.Count; i++)
-                {
-                    output = String.Empty;
-                    outputList = FormatListObjects(partitionedContainerList[i], settings, maxLength, arg, allowedContainers);
-
-                    int n = i + 1;
-                    output = $"**List of all known Containers ({n}/{partitionedContainerList.Count})**\n```\n" +  outputHeader + outputList + outputFooter;
-                    
-                    if (i == 0)
-                    {
-                        await arg.ModifyOriginalResponseAsync(edit => edit.Content =output);
-                    }
-                    else
-                    {
-                        await arg.Channel.SendMessageAsync(output);
-                    }
-                }
-
-
-
-                //arg.Channel.SendMessageAsync("");
+                sections = sections
+                            .OrderBy(s => settings.SectionOrder.IndexOf(s.SectionName))
+                            .ToList();
             }
             else
             {
-                string outputList = FormatListObjects(dockerService.DockerStatus, settings, maxLength, arg, allowedContainers);
-                string output = "**List of all known Containers**\n```\n" + outputHeader + outputList + outputFooter;
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = output);
+                sections = sections
+                            .OrderBy(s => s.SectionName)
+                            .ToList();
+            }
+
+            string combinedOutput = "";
+
+            foreach (var section in sections)
+            {
+                combinedOutput += $"**{section.SectionName}**\n```\n" + outputHeader;
+                combinedOutput += FormatListObjects(section.Containers, settings, maxLength, arg, allowedContainers);
+                combinedOutput += outputFooter;
+            }
+
+            if (combinedOutput.Length > 0)
+            {
+                await arg.ModifyOriginalResponseAsync(edit => edit.Content = combinedOutput);
             }
         }
 
@@ -145,22 +149,24 @@ namespace DD_Bot.Application.Commands
             {
                 if (allowedContainers.Contains(item.Names[0]) || settings.AdminIDs.Contains(arg.User.Id))
                 {
-                    outputList = outputList + "| " + item.Names[0] + new string(' ', maxLength - item.Names[0].Length);
-                    if (item.Status.Contains("Up"))
+                    string containerName = item.Names[0].Trim('/');
+                    if (containerName.Length > maxLength)
                     {
-                        outputList = outputList + "| Running |\n";
+                        containerName = containerName.Substring(0, maxLength - 3) + "..."; // Truncate and add ellipsis
                     }
-                    else
-                    {
-                        outputList = outputList + "| Stopped |\n";
-                    }
+                    string paddedName = containerName.PadRight(maxLength);
+                    outputList += $"| {paddedName} | {(item.Status.Contains("Up") ? "Running" : "Stopped")} |\n";
                 }
             }
-
             return outputList;
         }
 
-        #endregion
+        private class ContainerSection
+        {
+            public string SectionName { get; set; }
+            public List<ContainerListResponse> Containers { get; set; }
+        }
 
+        #endregion
     }
 }
