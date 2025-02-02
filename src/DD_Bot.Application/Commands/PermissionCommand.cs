@@ -89,7 +89,7 @@ namespace DD_Bot.Application.Commands
                 if (!UserIsAdmin(arg, settings))
                 {
                     await arg.ModifyOriginalResponseAsync(edit =>
-                        edit.Content = "Only Admins are allowed to check other users permissions!");
+                        edit.Content = "Only admins are allowed to check other users permissions!");
                     return;
                 }
 
@@ -109,7 +109,7 @@ namespace DD_Bot.Application.Commands
                 if (!UserIsAdmin(arg, settings))
                 {
                     await arg.ModifyOriginalResponseAsync(edit =>
-                        edit.Content = "Only Admins are allowed to check role permissions!");
+                        edit.Content = "Only admins are allowed to check role permissions!");
                     return;
                 }
                 
@@ -160,7 +160,7 @@ namespace DD_Bot.Application.Commands
 
             if (startPermissions.Count == 0 && stopPermissions.Count == 0)
             {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "No Permissions have been found");
+                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "No permissions have been found");
                 return;
             }
             
@@ -194,7 +194,7 @@ namespace DD_Bot.Application.Commands
             if (permissions.Count == 0)
             {
                 await arg.ModifyOriginalResponseAsync(edit =>
-                    edit.Content = "No Permissions have been found for " + listOwner);
+                    edit.Content = "No permissions have been found for " + listOwner);
                 return;
             }
             
@@ -213,7 +213,7 @@ namespace DD_Bot.Application.Commands
                 maxLength = 14;
             }
 
-            string outputHeader = "**List of Permissions for " + listOwner + "**\n```\n";
+            string outputHeader = "**List of permissions for " + listOwner + "**\n```\n";
             string outputTableHeader = new string('-', maxLength + 19) 
                                        + '\n' 
                                        + "| ContainerName"

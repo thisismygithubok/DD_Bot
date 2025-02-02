@@ -82,7 +82,7 @@ namespace DD_Bot.Application.Commands
             DiscordSettings discordSettings = settings.DiscordSettings;
             if (!discordSettings.AdminIDs.Contains(arg.User.Id))
             {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "You are not an Admin!");
+                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "You are not an admin!");
             }
             else
             {

@@ -38,7 +38,7 @@ namespace DD_Bot.Application.Commands
 
         #region CreateCommand
 
-        public static ApplicationCommandProperties Create() //Create-Methode mit 3 Auswahlmöglichkeiten für den Reiter Command
+        public static ApplicationCommandProperties Create() //Create method with 3 options for the Command tab
         {
             var builder = new SlashCommandBuilder()
             {
@@ -154,18 +154,18 @@ namespace DD_Bot.Application.Commands
 
             #endregion
 
-            if (string.IsNullOrEmpty(dockerName)) //Schaut ob ein Name für den Docker eingegeben wurde
+            if (string.IsNullOrEmpty(dockerName)) //Check if the user input a name for the docker container
             {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "No name has been specified");
+                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "No container name has been specified");
                 return;
             }
 
 
             var docker = dockerService.DockerStatus.FirstOrDefault(docker => docker.Names[0] == dockerName);
 
-            if (docker == null) //Schaut ob gesuchter Docker Existiert
+            if (docker == null) //Check if the docker container exists as a currently deployed container
             {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "Docker doesnt exist");
+                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "Container with the name ***" + dockerName + "*** doesn't exist");
                 return;
             }
 
