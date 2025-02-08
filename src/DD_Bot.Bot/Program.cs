@@ -41,13 +41,19 @@ File.WriteAllText(settingsFile, JsonConvert.SerializeObject(configuration.Get<Se
 var services = new ServiceCollection()
     .AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
     {
-        LogLevel = LogSeverity.Info,
+        LogLevel = LogSeverity.Warning, // Set log level to Warning to reduce additional info logs
         GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.GuildMessageReactions,
         MessageCacheSize = 100
     }))
     .AddSingleton<ILoggerFactory, LoggerFactory>()
     .AddSingleton(typeof(ILogger<>), typeof(Logger<>))
-    .AddLogging(configure => configure.AddConsole())
+    .AddLogging(configure => configure
+        .AddConsole(options =>
+        {
+            options.IncludeScopes = false;
+            options.DisableColors = true;
+            options.TimestampFormat = "hh:mm:ss ";
+        }))
     .AddSingleton(sp =>
     {
         var client = sp.GetRequiredService<DiscordSocketClient>();
@@ -64,7 +70,7 @@ var services = new ServiceCollection()
     .BuildServiceProvider();
 
 var logger = services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("Starting application...");
+logger.LogDebug("Starting application...");
 
 var discordUpdater = services.GetRequiredService<DiscordUpdater>();
 await discordUpdater.StartAsync();

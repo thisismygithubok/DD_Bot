@@ -30,9 +30,9 @@ public class DiscordUpdater
 
         try
         {
-            _logger.LogInformation("Logging in to Discord...");
+            _logger.LogDebug("Logging in to Discord...");
             await _client.LoginAsync(TokenType.Bot, Environment.GetEnvironmentVariable("DISCORD_TOKEN"));
-            _logger.LogInformation("Starting Discord client...");
+            _logger.LogDebug("Starting Discord client...");
             await _client.StartAsync();
         }
         catch (Exception ex)
@@ -44,11 +44,11 @@ public class DiscordUpdater
     private async Task OnReadyAsync()
     {
         _client.Ready -= OnReadyAsync; // Unsubscribe to ensure the logic is only triggered once
-        _logger.LogInformation("Bot is ready.");
+        _logger.LogDebug("Bot is ready.");
 
         await Task.Delay(1000); // Ensure there's a delay to allow for guilds to be fully fetched
 
-        _logger.LogInformation($"Attempting to fetch guild with ID {_guildId}...");
+        _logger.LogDebug($"Attempting to fetch guild with ID {_guildId}...");
         var guild = _client.GetGuild(_guildId);
         if (guild == null)
         {
@@ -60,16 +60,16 @@ public class DiscordUpdater
             return;
         }
 
-        _logger.LogInformation($"Guild with ID {_guildId} found: {guild.Name}");
+        _logger.LogDebug($"Guild with ID {_guildId} found: {guild.Name}");
 
-        var channel = guild.GetChannel(_channelId) as SocketTextChannel;
+        var channel = guild.GetChannel(_channelId) as SocketVoiceChannel;
         if (channel == null)
         {
-            _logger.LogError($"Channel with ID {_channelId} not found in guild {_guildId}.");
+            _logger.LogError($"Voice Channel with ID {_channelId} not found in guild {_guildId}.");
             return;
         }
 
-        _logger.LogInformation($"Channel with ID {_channelId} found: {channel.Name}");
+        _logger.LogDebug($"Voice Channel with ID {_channelId} found: {channel.Name}");
         
         // Start the timer to update channel name every 30 seconds
         _timer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(30));
@@ -80,10 +80,10 @@ public class DiscordUpdater
         var cpuUsage = GetCpuUsage();
         var memoryUsage = GetMemoryUsage();
 
-        var channel = _client.GetGuild(_guildId)?.GetChannel(_channelId) as SocketTextChannel;
+        var channel = _client.GetGuild(_guildId)?.GetChannel(_channelId) as SocketVoiceChannel;
         if (channel != null)
         {
-            var newChannelName = $"CPU: {cpuUsage}% | RAM: {memoryUsage}%";
+            var newChannelName = $"CPU: {cpuUsage}% | RAM: {memoryUsage:F1}%"; // Format RAM usage to a single decimal place
             channel.ModifyAsync(ch => ch.Name = newChannelName).GetAwaiter().GetResult();
             _logger.LogInformation($"Updated channel name to: {newChannelName}");
         }
