@@ -12,6 +12,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:6.0
 WORKDIR /app
 COPY --from=build /app/publish .
 
+# Install necessary packages
+RUN apt-get update && apt-get install -y procps gawk
+
 # Allow all users access to this so we can run the container as non-root.
 RUN chmod -R 775 /app
 USER root
