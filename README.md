@@ -1,5 +1,5 @@
 <h1 align="center">DD_Bot</h1>
-<h1 align="center">This custom fork has added categories/sections based on container labels</h1>
+<h1 align="center">This custom fork has added categories/sections based on container labels, as well as host system metrics reporting as a discord voice channel name.</h1>
 
 <p align="center">A Discord-Bot to start and stop Docker Containers, using the Docker Socket</p>
 <p align="center">
@@ -52,6 +52,43 @@
     }
 - Output of /list will now separate into separate tables based on these labels and ordering
 ![List Command Sections](pics/ListCommandSections.png)
+
+## NEW: Host System Metrics Reporting via Discord Voice Channel Name
+
+- Mount the host's /proc as rw to the docker container, as well as pass 3 new environment variables for the bot to connect to the desired discord, and update the desired channel
+
+    ```yml
+    docker-discord:
+        image: thisismynameok/docker-discord-bot
+        container_name: docker-discord
+        volumes:
+            - $DOCKERDIR/appdata/docker-discord/settings:/app/settings/:rw
+            - /var/run/docker.sock:/var/run/docker.sock
+            - /proc:/host_proc:ro # <--- New Mount for EnableMetrics=true --->
+        environment:
+            TZ: $TZ
+            PUID: $PUID
+            PGID: $PGID
+            DISCORD_TOKEN: $DISCORD_TOKEN # <--- New Env Var for EnableMetrics=true --->
+            GUILD_ID: $DISCORD_GUILD_ID # <--- New Env Var for EnableMetrics=true --->
+            CHANNEL_ID: $DISCORD_CHANNEL_ID # <--- New Env Var for EnableMetrics=true --->
+        restart: always
+- Add a new section in settings.json's "DiscordSettings" to enable these metrics - false by default. If set to true, you need the above new mount, and 3 new env vars.
+
+    ```json
+    {
+    "DiscordSettings": {
+        ...
+        "SectionOrder": [
+            "Game Servers",
+            "Frontend"
+        ],
+        "EnableMetrics": false
+    }
+    }
+- EnableMetrics=true will update the desired discord voice channel name every 11 minutes with host CPU & Memory usage info
+
+> ![List Command Sections](pics/Metrics.png)
 
 ## Screenshots
 
