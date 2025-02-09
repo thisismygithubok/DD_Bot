@@ -55,7 +55,7 @@
 
 ## NEW: Host System Metrics Reporting via Discord Voice Channel Name
 
-- Mount the host's /proc as rw to the docker container, as well as pass 3 new environment variables for the bot to connect to the desired discord, and update the desired channel
+- Mount the host's /proc as ro to the docker container, as well as pass 3 new environment variables for the bot to connect to the desired discord, and update the desired channel
 
     ```yml
     docker-discord:
