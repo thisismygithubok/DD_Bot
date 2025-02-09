@@ -1,5 +1,8 @@
 <h1 align="center">DD_Bot</h1>
-<h1 align="center">This custom fork has added categories/sections based on container labels</h1>
+# This custom fork has added:
+
+- Categories/sections based on container labels
+- Host system metrics reporting as a discord voice channel name
 
 <p align="center">A Discord-Bot to start and stop Docker Containers, using the Docker Socket</p>
 <p align="center">
