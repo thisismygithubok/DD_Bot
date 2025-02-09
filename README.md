@@ -87,6 +87,7 @@
     }
     }
 - EnableMetrics=true will update the desired discord voice channel name every 11 minutes with host CPU & Memory usage info
+
 ![List Command Sections](pics/Metrics.png)
 
 ## Screenshots
