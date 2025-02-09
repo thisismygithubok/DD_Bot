@@ -37,5 +37,6 @@ namespace DD_Bot.Domain
         public Dictionary<ulong, List<string>> UserStartPermissions { get; set; } = new Dictionary<ulong, List<string>>();
         public Dictionary<ulong, List<string>> UserStopPermissions { get; set; } = new Dictionary<ulong, List<string>>();
         public List<string> SectionOrder { get; set; } // New setting for section order
+        public bool EnableMetrics { get; set; } = false; // New setting for passing host usage metrics to discord voice channel name
     }
 }

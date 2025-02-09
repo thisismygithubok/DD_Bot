@@ -38,6 +38,8 @@ var configuration = new ConfigurationBuilder()
 File.WriteAllText(settingsFile, JsonConvert.SerializeObject(configuration.Get<Settings>(), Formatting.Indented));
 #endregion
 
+var enableMetrics = configuration.GetValue<bool>("DiscordSettings:EnableMetrics");
+
 var services = new ServiceCollection()
     .AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
     {
@@ -54,32 +56,40 @@ var services = new ServiceCollection()
             options.DisableColors = true;
             options.TimestampFormat = "hh:mm:ss ";
         }))
-    .AddSingleton(sp =>
+    .AddScoped(_ => configuration)
+    .AddScoped(_ => settingsFile)
+    .AddSingleton<IDiscordService, DiscordService>()
+    .AddSingleton<IDockerService, DockerService>()
+    .AddSingleton<ISettingsService, SettingsService>();
+
+if (enableMetrics)
+{
+    services.AddSingleton(sp =>
     {
         var client = sp.GetRequiredService<DiscordSocketClient>();
         var logger = sp.GetRequiredService<ILogger<DiscordUpdater>>();
         var guildId = ulong.Parse(Environment.GetEnvironmentVariable("GUILD_ID"));
         var channelId = ulong.Parse(Environment.GetEnvironmentVariable("CHANNEL_ID"));
-        return new DiscordUpdater(client, guildId, channelId, logger);
-    })
-    .AddScoped(_ => configuration)
-    .AddScoped(_ => settingsFile)
-    .AddSingleton<IDiscordService, DiscordService>()
-    .AddSingleton<IDockerService, DockerService>()
-    .AddSingleton<ISettingsService, SettingsService>()
-    .BuildServiceProvider();
+        return new DiscordUpdater(client, guildId, channelId, logger, enableMetrics);
+    });
+}
 
-var logger = services.GetRequiredService<ILogger<Program>>();
+var serviceProvider = services.BuildServiceProvider();
+
+var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
 logger.LogDebug("Starting application...");
 
-var discordUpdater = services.GetRequiredService<DiscordUpdater>();
-await discordUpdater.StartAsync();
+if (enableMetrics)
+{
+    var discordUpdater = serviceProvider.GetRequiredService<DiscordUpdater>();
+    await discordUpdater.StartAsync();
+}
 
-var dockerService = services.GetRequiredService<IDockerService>() as DockerService;
+var dockerService = serviceProvider.GetRequiredService<IDockerService>() as DockerService;
 if (dockerService == null) throw new ArgumentNullException(nameof(dockerService));
-var settingsService = services.GetRequiredService<ISettingsService>() as SettingsService;
+var settingsService = serviceProvider.GetRequiredService<ISettingsService>() as SettingsService;
 if (settingsService == null) throw new ArgumentNullException(nameof(settingsService));
-var discordBot = services.GetRequiredService<IDiscordService>() as DiscordService;
+var discordBot = serviceProvider.GetRequiredService<IDiscordService>() as DiscordService;
 if (discordBot == null) throw new ArgumentNullException(nameof(discordBot));
 discordBot.Start();
 dockerService.Start();

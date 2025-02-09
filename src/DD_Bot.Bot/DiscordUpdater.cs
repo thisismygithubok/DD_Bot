@@ -13,13 +13,15 @@ public class DiscordUpdater
     private readonly ulong _channelId;
     private readonly ILogger<DiscordUpdater> _logger;
     private readonly Timer _timer;
+    private readonly bool _enableMetrics;
 
-    public DiscordUpdater(DiscordSocketClient client, ulong guildId, ulong channelId, ILogger<DiscordUpdater> logger)
+    public DiscordUpdater(DiscordSocketClient client, ulong guildId, ulong channelId, ILogger<DiscordUpdater> logger, bool enableMetrics)
     {
         _client = client;
         _guildId = guildId;
         _channelId = channelId;
         _logger = logger;
+        _enableMetrics = enableMetrics;
         _timer = new Timer(UpdateChannelName, null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -71,8 +73,15 @@ public class DiscordUpdater
 
         _logger.LogDebug($"Voice Channel with ID {_channelId} found: {channel.Name}");
         
-        // Start the timer to update channel name every 30 seconds
-        _timer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(30));
+        if (_enableMetrics)
+        {
+            // Start the timer to update channel name every 11 minutes
+            _timer.Change(TimeSpan.Zero, TimeSpan.FromMinutes(11));
+        }
+        else
+        {
+            _logger.LogInformation("Metrics monitoring is disabled.");
+        }
     }
 
     private void UpdateChannelName(object state)
