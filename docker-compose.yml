@@ -1,8 +1,19 @@
 name: dd-bot
 services:
   ddbot:
+    image: thisismynameok/docker-discord-bot:latest
     container_name: DD_Bot
     volumes:
       - ./settings:/app/settings/:rw
       - /var/run/docker.sock:/var/run/docker.sock
-    image: thisismynameok/docker-discord-bot:latest
+      - /proc:/host_proc:ro
+    environment:
+            TZ: $TZ
+            PUID: $PUID
+            PGID: $PGID
+            DISCORD_TOKEN: $DISCORD_TOKEN
+            GUILD_ID: $DISCORD_GUILD_ID
+            CHANNEL_ID: $DISCORD_CHANNEL_ID
+    restart: always
+    labels:
+        section: "Backend"
