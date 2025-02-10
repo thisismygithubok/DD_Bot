@@ -8,12 +8,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /proc:/host_proc:ro
     environment:
-            TZ: $TZ
-            PUID: $PUID
-            PGID: $PGID
-            DISCORD_TOKEN: $DISCORD_TOKEN
-            GUILD_ID: $DISCORD_GUILD_ID
-            CHANNEL_ID: $DISCORD_CHANNEL_ID
+      TZ: $TZ
+      PUID: $PUID
+      PGID: $PGID
+      DISCORD_TOKEN: $DISCORD_TOKEN
+      GUILD_ID: $DISCORD_GUILD_ID
+      CHANNEL_ID: $DISCORD_CHANNEL_ID
     restart: always
     labels:
         section: "Backend"
