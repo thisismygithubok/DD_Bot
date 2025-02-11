@@ -119,6 +119,21 @@ namespace DD_Bot.Application.Commands
                                 {
                                     authorized = true;
                                 }
+                                else
+                                {
+                                    var dockerContainer = dockerService.DockerStatus.FirstOrDefault(d => d.Names[0] == dockerName);
+                                    if (dockerContainer != null && dockerContainer.Labels != null)
+                                    {
+                                        foreach (var label in dockerContainer.Labels)
+                                        {
+                                            if (settings.RoleStartPermissions[role.Id].Contains(label.Value) && settings.SectionOrder.Contains(label.Value))
+                                            {
+                                                authorized = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         break;
@@ -138,6 +153,21 @@ namespace DD_Bot.Application.Commands
                                 if (settings.RoleStopPermissions[role.Id].Contains(dockerName))
                                 {
                                     authorized = true;
+                                }
+                                else
+                                {
+                                    var dockerContainer = dockerService.DockerStatus.FirstOrDefault(d => d.Names[0] == dockerName);
+                                    if (dockerContainer != null && dockerContainer.Labels != null)
+                                    {
+                                        foreach (var label in dockerContainer.Labels)
+                                        {
+                                            if (settings.RoleStopPermissions[role.Id].Contains(label.Value) && settings.SectionOrder.Contains(label.Value))
+                                            {
+                                                authorized = true;
+                                                break;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -192,15 +222,15 @@ namespace DD_Bot.Application.Commands
 
             switch (command)
             {
-               case "start":
-                   dockerService.DockerCommandStart(dockerId);
-                    break;
-               case "stop":
-                   dockerService.DockerCommandStop(dockerId);
-                    break;
-               case "restart":
-                   dockerService.DockerCommandRestart(dockerId);
-                    break;
+            case "start":
+                await dockerService.DockerCommandStart(dockerId);
+                break;
+            case "stop":
+                await dockerService.DockerCommandStop(dockerId);
+                break;
+            case "restart":
+                await dockerService.DockerCommandRestart(dockerId);
+                break;
             }
 
             await arg.ModifyOriginalResponseAsync(edit =>
