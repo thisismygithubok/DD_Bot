@@ -25,7 +25,6 @@ using DD_Bot.Application.Services;
 using DD_Bot.Domain;
 using System.Linq;
 using Docker.DotNet.Models;
-using System.Threading.Tasks;
 
 namespace DD_Bot.Application.Commands
 {
@@ -153,29 +152,24 @@ namespace DD_Bot.Application.Commands
         private static async Task DisplayContainers(DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings, SocketSlashCommand arg, List<string> allowedContainers)
         {
             int maxLength = dockerService.DockerStatusLongestName() + 1;
-            if (maxLength > 28)
+            if (maxLength > 28)  // Ensure a maximum column width for "Container Name"
             {
                 maxLength = 28;
             }
 
-            int statusColumnLength = 8;
-            int totalLength = maxLength + statusColumnLength + 4;
+            int statusColumnLength = 8; // Adjust length for "Status" column
+            int totalLength = maxLength + statusColumnLength + 4; // Adjust total length calculation
 
             string outputHeader = new string('-', totalLength + 1)
                             + "\n| Container Name"
                             + new string(' ', maxLength - 14)
-                            + " | Status  |\n"
+                            + " | Status  |\n" // Adjusted spacing for alignment
                             + new string('-', totalLength + 1)
                             + "\n";
 
-            string outputFooter = new string('-', totalLength + 1) + "\n```";
+            string outputFooter = new string('-', totalLength + 1) + "\n" + "```";
 
-            List<ContainerSection> sections;
-
-            if (settings.AdminIDs.Contains(arg.User.Id))
-            {
-                // Admins can access all sections
-                sections = dockerService.DockerStatus
+            var sections = dockerService.DockerStatus
                             .GroupBy(c => c.Labels.ContainsKey("section") ? c.Labels["section"] : "Uncategorized")
                             .Select(g => new ContainerSection
                             {
@@ -258,18 +252,8 @@ namespace DD_Bot.Application.Commands
             {
                 await arg.ModifyOriginalResponseAsync(edit => edit.Content = combinedOutput);
             }
-            else
-            {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "No containers found or you do not have permission to view them.");
-            }
         }
 
-        private class ContainerSection
-        {
-            public string SectionName { get; set; }
-            public List<ContainerListResponse> Containers { get; set; }
-        }
-        
         private static string FormatListObjects(List<ContainerListResponse> list, DiscordSettings settings, int maxLength, SocketSlashCommand arg, List<string> allowedContainers)
         {
             string outputList = String.Empty;
@@ -287,6 +271,12 @@ namespace DD_Bot.Application.Commands
                 }
             }
             return outputList;
+        }
+
+        private class ContainerSection
+        {
+            public string SectionName { get; set; }
+            public List<ContainerListResponse> Containers { get; set; }
         }
 
         #endregion
