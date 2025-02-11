@@ -49,6 +49,8 @@ namespace DD_Bot.Application.Services
         }
 
         private Settings Setting => _configuration.Get<Settings>();
+        // private DockerSettings DockerSettings => _configuration.Get<DockerSettings>();
+
 
         private DockerService Docker => _serviceProvider.GetRequiredService<IDockerService>() as DockerService;
         private SettingsService SettingService => _serviceProvider.GetRequiredService<ISettingsService>() as SettingsService;
@@ -80,7 +82,7 @@ namespace DD_Bot.Application.Services
                         DockerCommand.Execute(arg, Docker, Setting.DiscordSettings);
                     return Task.CompletedTask;
                 case "list":
-                    ListCommand.Execute(arg, Docker, Setting.DiscordSettings);
+                    ListCommand.Execute(arg, Docker, Setting.DiscordSettings, Setting.DockerSettings);
                     return Task.CompletedTask;
                 case "admin":
                     AdminCommand.Execute(arg, Setting, SettingService);

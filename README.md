@@ -90,6 +90,38 @@
 
 > ![List Command Sections](pics/Metrics.png)
 
+## NEW: Assign Container Control Permissions Based on Section/Label
+
+- Instead of having to assign individual container permissions to a role, you can now assign it a "section" to be able to control.
+    
+    ```json
+    {
+        "DiscordSettings": {
+            ...
+            "RoleStartPermissions": {
+                "######": [
+                    "Game Servers"
+                ]
+            },
+            "RoleStopPermissions": {
+                "######": [
+                    "Game Servers"
+                ]
+            },
+            "UserStartPermissions": {},
+            "UserStopPermissions": {},
+            "SectionOrder": [
+                "Game Servers",
+                "Frontend",
+                "Backend"
+            ],
+            "EnableMetrics": false
+        }
+    }
+
+- This will print out only the container section/category assigned to the role.
+![List Command Resticted to Section](pics/ListCommandRestricted.png)
+
 ## Screenshots
 
 ![Show Status of Containers](pics/Listcommand.png)

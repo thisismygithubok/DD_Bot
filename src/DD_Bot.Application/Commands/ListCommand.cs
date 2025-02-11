@@ -25,6 +25,7 @@ using DD_Bot.Application.Services;
 using DD_Bot.Domain;
 using System.Linq;
 using Docker.DotNet.Models;
+using System.Threading.Tasks;
 
 namespace DD_Bot.Application.Commands
 {
@@ -51,7 +52,7 @@ namespace DD_Bot.Application.Commands
 
         #region ExecuteCommand
 
-        public static async void Execute(SocketSlashCommand arg, DockerService dockerService, DiscordSettings settings)
+        public static async void Execute(SocketSlashCommand arg, DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings)
         {
             await arg.RespondAsync("Contacting Docker Service...");
             await dockerService.DockerUpdate();
@@ -64,29 +65,93 @@ namespace DD_Bot.Application.Commands
                 var socketGuildUser = guild.GetUser(socketUser.Id);
                 var userRoles = socketGuildUser.Roles;
 
-                if (settings.UserStartPermissions.ContainsKey(arg.User.Id))
-                {
-                    allowedContainers.AddRange(settings.UserStartPermissions[arg.User.Id]);
-                }
-                if (settings.UserStopPermissions.ContainsKey(arg.User.Id))
-                {
-                    allowedContainers.AddRange(settings.UserStopPermissions[arg.User.Id]);
-                }
+                allowedContainers.AddRange(GetPermissionsForUser(settings, arg.User.Id));
+                allowedContainers.AddRange(GetPermissionsForRoles(settings, userRoles));
 
-                foreach (var role in userRoles)
-                {
-                    if (settings.RoleStartPermissions.ContainsKey(role.Id))
-                    {
-                        allowedContainers.AddRange(settings.RoleStartPermissions[role.Id]);
-                    }
-                    if (settings.RoleStopPermissions.ContainsKey(role.Id))
-                    {
-                        allowedContainers.AddRange(settings.RoleStopPermissions[role.Id]);
-                    }
-                }
+                // Check for SectionOrder labels
+                allowedContainers.AddRange(ValidateSectionLabels(dockerService, settings, userRoles));
                 allowedContainers = allowedContainers.Distinct().ToList();
             }
+            else
+            {
+                // Admins can see all containers
+                allowedContainers = dockerService.DockerStatus.Select(c => c.Names[0]).ToList();
+            }
 
+            if (dockerSettings.DebugLogging)
+            {
+                // Debugging output
+                Console.WriteLine("Allowed Containers (Admins):");
+                foreach (var container in allowedContainers)
+                {
+                    Console.WriteLine(container);
+                }
+            }
+
+            await DisplayContainers(dockerService, settings, dockerSettings, arg, allowedContainers);
+        }
+
+        private static IEnumerable<string> GetPermissionsForUser(DiscordSettings settings, ulong userId)
+        {
+            List<string> permissions = new List<string>();
+            if (settings.UserStartPermissions.ContainsKey(userId))
+            {
+                permissions.AddRange(settings.UserStartPermissions[userId]);
+            }
+            if (settings.UserStopPermissions.ContainsKey(userId))
+            {
+                permissions.AddRange(settings.UserStopPermissions[userId]);
+            }
+            return permissions;
+        }
+
+        private static IEnumerable<string> GetPermissionsForRoles(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles)
+        {
+            List<string> permissions = new List<string>();
+            foreach (var role in roles)
+            {
+                if (settings.RoleStartPermissions.ContainsKey(role.Id))
+                {
+                    permissions.AddRange(settings.RoleStartPermissions[role.Id]);
+                }
+                if (settings.RoleStopPermissions.ContainsKey(role.Id))
+                {
+                    permissions.AddRange(settings.RoleStopPermissions[role.Id]);
+                }
+            }
+            return permissions;
+        }
+
+        private static IEnumerable<string> ValidateSectionLabels(DockerService dockerService, DiscordSettings settings, IReadOnlyCollection<SocketRole> roles)
+        {
+            List<string> containers = new List<string>();
+            var dockerContainers = dockerService.DockerStatus;
+            foreach (var container in dockerContainers)
+            {
+                if (container.Labels != null && container.Labels.ContainsKey("section"))
+                {
+                    var sectionLabel = container.Labels["section"];
+                    if (settings.SectionOrder.Contains(sectionLabel))
+                    {
+                        foreach (var role in roles)
+                        {
+                            if (settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(sectionLabel))
+                            {
+                                containers.Add(container.Names[0]);
+                            }
+                            if (settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(sectionLabel))
+                            {
+                                containers.Add(container.Names[0]);
+                            }
+                        }
+                    }
+                }
+            }
+            return containers;
+        }
+
+        private static async Task DisplayContainers(DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings, SocketSlashCommand arg, List<string> allowedContainers)
+        {
             int maxLength = dockerService.DockerStatusLongestName() + 1;
             if (maxLength > 28)  // Ensure a maximum column width for "Container Name"
             {
@@ -97,15 +162,20 @@ namespace DD_Bot.Application.Commands
             int totalLength = maxLength + statusColumnLength + 4; // Adjust total length calculation
 
             string outputHeader = new string('-', totalLength + 1)
-                            + "\n| Container Name"
-                            + new string(' ', maxLength - 14)
-                            + " | Status  |\n" // Adjusted spacing for alignment
-                            + new string('-', totalLength + 1)
-                            + "\n";
+                                + "\n| Container Name"
+                                + new string(' ', maxLength - 14)
+                                + " | Status  |\n" // Adjusted spacing for alignment
+                                + new string('-', totalLength + 1)
+                                + "\n";
 
             string outputFooter = new string('-', totalLength + 1) + "\n" + "```";
 
-            var sections = dockerService.DockerStatus
+            List<ContainerSection> sections;
+
+            if (settings.AdminIDs.Contains(arg.User.Id))
+            {
+                // Admins can access all sections
+                sections = dockerService.DockerStatus
                             .GroupBy(c => c.Labels.ContainsKey("section") ? c.Labels["section"] : "Uncategorized")
                             .Select(g => new ContainerSection
                             {
@@ -113,6 +183,47 @@ namespace DD_Bot.Application.Commands
                                 Containers = g.ToList()
                             })
                             .ToList();
+            }
+            else
+            {
+                // Get user's allowed sections
+                var allowedSections = new List<string>();
+                foreach (var roleId in settings.RoleStartPermissions.Keys)
+                {
+                    if (settings.RoleStartPermissions[roleId].Any(section => allowedContainers.Contains(section)))
+                    {
+                        allowedSections.AddRange(settings.RoleStartPermissions[roleId]);
+                    }
+                }
+                foreach (var roleId in settings.RoleStopPermissions.Keys)
+                {
+                    if (settings.RoleStopPermissions[roleId].Any(section => allowedContainers.Contains(section)))
+                    {
+                        allowedSections.AddRange(settings.RoleStopPermissions[roleId]);
+                    }
+                }
+                allowedSections = allowedSections.Distinct().ToList();
+
+                if (dockerSettings.DebugLogging)
+                {
+                    // Debugging output
+                    Console.WriteLine("Allowed Sections:");
+                    foreach (var section in allowedSections)
+                    {
+                        Console.WriteLine(section);
+                    }
+                }
+
+                sections = dockerService.DockerStatus
+                            .Where(c => c.Labels.ContainsKey("section") && allowedSections.Contains(c.Labels["section"]))
+                            .GroupBy(c => c.Labels["section"])
+                            .Select(g => new ContainerSection
+                            {
+                                SectionName = g.Key,
+                                Containers = g.ToList()
+                            })
+                            .ToList();
+            }
 
             if (settings.SectionOrder != null && settings.SectionOrder.Any())
             {
@@ -136,6 +247,13 @@ namespace DD_Bot.Application.Commands
                 combinedOutput += outputFooter;
             }
 
+            if (dockerSettings.DebugLogging)
+            {
+                // Debugging output
+                Console.WriteLine("Combined Output:");
+                Console.WriteLine(combinedOutput);
+            }
+
             if (combinedOutput.Length > 0)
             {
                 await arg.ModifyOriginalResponseAsync(edit => edit.Content = combinedOutput);
@@ -144,7 +262,7 @@ namespace DD_Bot.Application.Commands
 
         private static string FormatListObjects(List<ContainerListResponse> list, DiscordSettings settings, int maxLength, SocketSlashCommand arg, List<string> allowedContainers)
         {
-            string outputList = String.Empty;
+            string outputList = string.Empty;
             foreach (var item in list)
             {
                 if (allowedContainers.Contains(item.Names[0]) || settings.AdminIDs.Contains(arg.User.Id))

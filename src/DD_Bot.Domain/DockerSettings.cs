@@ -25,5 +25,6 @@ namespace DD_Bot.Domain
         public int Retries { get; set; } = 6;
         public int TimeBeforeRetry { get; set; } = 5;
         public int ContainersPerMessage { get; set; } = 30;
+        public bool DebugLogging { get; set; } = false; // New setting for debug logging
     }
 }
