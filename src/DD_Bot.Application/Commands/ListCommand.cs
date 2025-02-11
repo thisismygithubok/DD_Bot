@@ -25,7 +25,7 @@ using DD_Bot.Application.Services;
 using DD_Bot.Domain;
 using System.Linq;
 using Docker.DotNet.Models;
-using System.Threading.Tasks; // Add this using directive
+using System.Threading.Tasks;
 
 namespace DD_Bot.Application.Commands
 {
@@ -78,11 +78,14 @@ namespace DD_Bot.Application.Commands
                 allowedContainers = dockerService.DockerStatus.Select(c => c.Names[0]).ToList();
             }
 
-            // Debugging output
-            Console.WriteLine("Allowed Containers (Admins):");
-            foreach (var container in allowedContainers)
+            if (settings.DockerSettings.DebugLogging)
             {
-                Console.WriteLine(container);
+                // Debugging output
+                Console.WriteLine("Allowed Containers (Admins):");
+                foreach (var container in allowedContainers)
+                {
+                    Console.WriteLine(container);
+                }
             }
 
             await DisplayContainers(dockerService, settings, arg, allowedContainers);
@@ -201,11 +204,14 @@ namespace DD_Bot.Application.Commands
                 }
                 allowedSections = allowedSections.Distinct().ToList();
 
-                // Debugging output
-                Console.WriteLine("Allowed Sections:");
-                foreach (var section in allowedSections)
+                if (settings.DockerSettings.DebugLogging)
                 {
-                    Console.WriteLine(section);
+                    // Debugging output
+                    Console.WriteLine("Allowed Sections:");
+                    foreach (var section in allowedSections)
+                    {
+                        Console.WriteLine(section);
+                    }
                 }
 
                 sections = dockerService.DockerStatus
@@ -241,9 +247,12 @@ namespace DD_Bot.Application.Commands
                 combinedOutput += outputFooter;
             }
 
-            // Debugging output
-            Console.WriteLine("Combined Output:");
-            Console.WriteLine(combinedOutput);
+            if (settings.DockerSettings.DebugLogging)
+            {
+                // Debugging output
+                Console.WriteLine("Combined Output:");
+                Console.WriteLine(combinedOutput);
+            }
 
             if (combinedOutput.Length > 0)
             {
