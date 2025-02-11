@@ -96,27 +96,27 @@
     
     ```json
     {
-    "DiscordSettings": {
-        ...
-        "RoleStartPermissions": {
-            "######": [
-                "Game Servers"
-            ]
-        },
-        "RoleStopPermissions": {
-            "######": [
-                "Game Servers"
-            ]
-        },
-        "UserStartPermissions": {},
-        "UserStopPermissions": {},
-        "SectionOrder": [
-            "Game Servers",
-            "Frontend",
-            "Backend"
-        ],
-        "EnableMetrics": false
-    }
+        "DiscordSettings": {
+            ...
+            "RoleStartPermissions": {
+                "######": [
+                    "Game Servers"
+                ]
+            },
+            "RoleStopPermissions": {
+                "######": [
+                    "Game Servers"
+                ]
+            },
+            "UserStartPermissions": {},
+            "UserStopPermissions": {},
+            "SectionOrder": [
+                "Game Servers",
+                "Frontend",
+                "Backend"
+            ],
+            "EnableMetrics": false
+        }
     }
 
 - This will print out only the container section/category assigned to the role.
