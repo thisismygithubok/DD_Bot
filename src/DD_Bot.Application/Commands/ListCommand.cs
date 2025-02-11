@@ -52,7 +52,7 @@ namespace DD_Bot.Application.Commands
 
         #region ExecuteCommand
 
-        public static async void Execute(SocketSlashCommand arg, DockerService dockerService, DiscordSettings settings)
+        public static async void Execute(SocketSlashCommand arg, DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings)
         {
             await arg.RespondAsync("Contacting Docker Service...");
             await dockerService.DockerUpdate();
@@ -78,7 +78,7 @@ namespace DD_Bot.Application.Commands
                 allowedContainers = dockerService.DockerStatus.Select(c => c.Names[0]).ToList();
             }
 
-            if (settings.DockerSettings.DebugLogging)
+            if (dockerSettings.DebugLogging)
             {
                 // Debugging output
                 Console.WriteLine("Allowed Containers (Admins):");
@@ -88,7 +88,7 @@ namespace DD_Bot.Application.Commands
                 }
             }
 
-            await DisplayContainers(dockerService, settings, arg, allowedContainers);
+            await DisplayContainers(dockerService, settings, dockerSettings, arg, allowedContainers);
         }
 
         private static IEnumerable<string> GetPermissionsForUser(DiscordSettings settings, ulong userId)
@@ -150,7 +150,7 @@ namespace DD_Bot.Application.Commands
             return containers;
         }
 
-        private static async Task DisplayContainers(DockerService dockerService, DiscordSettings settings, SocketSlashCommand arg, List<string> allowedContainers)
+        private static async Task DisplayContainers(DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings, SocketSlashCommand arg, List<string> allowedContainers)
         {
             int maxLength = dockerService.DockerStatusLongestName() + 1;
             if (maxLength > 28)
@@ -204,7 +204,7 @@ namespace DD_Bot.Application.Commands
                 }
                 allowedSections = allowedSections.Distinct().ToList();
 
-                if (settings.DockerSettings.DebugLogging)
+                if (dockerSettings.DebugLogging)
                 {
                     // Debugging output
                     Console.WriteLine("Allowed Sections:");
@@ -247,7 +247,7 @@ namespace DD_Bot.Application.Commands
                 combinedOutput += outputFooter;
             }
 
-            if (settings.DockerSettings.DebugLogging)
+            if (dockerSettings.DebugLogging)
             {
                 // Debugging output
                 Console.WriteLine("Combined Output:");
