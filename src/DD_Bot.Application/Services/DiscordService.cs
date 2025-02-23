@@ -1,23 +1,4 @@
-﻿/* DD_Bot - A Discord Bot to control Docker containers*/
-
-/*  Copyright (C) 2022 Maxim Kovac
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-*/
-
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DD_Bot.Application.Commands;
@@ -35,6 +16,7 @@ namespace DD_Bot.Application.Services
         private readonly IConfigurationRoot _configuration;
         private readonly IServiceProvider _serviceProvider;
         private readonly DiscordSocketClient _discordClient;
+        private readonly DockerCommand _dockerCommand;
 
         public DiscordService(IConfigurationRoot configuration, IServiceProvider serviceProvider)//Discord Initialising
         {
@@ -46,22 +28,21 @@ namespace DD_Bot.Application.Services
             _configuration = configuration;
             _serviceProvider = serviceProvider;
             _discordClient = new DiscordSocketClient(discordSocketConfig);
+            _dockerCommand = new DockerCommand(_discordClient, Docker); // Create an instance of DockerCommand
         }
 
         private Settings Setting => _configuration.Get<Settings>();
-        // private DockerSettings DockerSettings => _configuration.Get<DockerSettings>();
-
 
         private DockerService Docker => _serviceProvider.GetRequiredService<IDockerService>() as DockerService;
         private SettingsService SettingService => _serviceProvider.GetRequiredService<ISettingsService>() as SettingsService;
-        
+
         public void Start() //Discord Start
         {
-            
             _discordClient.Log += DiscordClient_Log;
             _discordClient.MessageReceived += DiscordClient_MessageReceived;
             _discordClient.GuildAvailable += DiscordClient_GuildAvailable;
             _discordClient.SlashCommandExecuted += DiscordClient_SlashCommandExecuted;
+            _discordClient.SelectMenuExecuted += DiscordClient_SelectMenuExecuted;
             _discordClient.LoginAsync(TokenType.Bot, Setting.DiscordSettings.Token);
             _discordClient.StartAsync();
             while (true)
@@ -71,40 +52,59 @@ namespace DD_Bot.Application.Services
             // ReSharper disable once FunctionNeverReturns
         }
 
-        private Task DiscordClient_SlashCommandExecuted(SocketSlashCommand arg)
+        private async Task DiscordClient_SlashCommandExecuted(SocketSlashCommand arg)
         {
             switch (arg.CommandName)
             {
                 case "ping":
                     TestCommand.Execute(arg);
-                    return Task.CompletedTask;
+                    return;
                 case "docker":
-                        DockerCommand.Execute(arg, Docker, Setting.DiscordSettings);
-                    return Task.CompletedTask;
+                    _dockerCommand.HandleSlashCommand(arg, Docker, Setting.DiscordSettings);
+                    return;
                 case "list":
                     ListCommand.Execute(arg, Docker, Setting.DiscordSettings, Setting.DockerSettings);
-                    return Task.CompletedTask;
+                    return;
                 case "admin":
                     AdminCommand.Execute(arg, Setting, SettingService);
-                    return Task.CompletedTask;
+                    return;
                 case "user":
                     UserCommand.Execute(arg, Setting, SettingService);
-                    return Task.CompletedTask;
+                    return;
                 case "role":
                     RoleCommand.Execute(arg, Setting, SettingService);
-                    return Task.CompletedTask;
+                    return;
                 case "permission":
                     PermissionCommand.Execute(arg, Setting);
-                    return Task.CompletedTask;
+                    return;
             }
-            return Task.CompletedTask;
+        }
+
+        private async Task DiscordClient_SelectMenuExecuted(SocketMessageComponent component)
+        {
+            switch (component.Data.CustomId)
+            {
+                case "section_select":
+                    await _dockerCommand.HandleSectionSelect(component, Docker, Setting.DiscordSettings);
+                    break;
+                case "container_select":
+                    await _dockerCommand.HandleContainerSelect(component, Docker, Setting.DiscordSettings);
+                    break;
+                case "command_select":
+                    await _dockerCommand.HandleCommandSelect(component, Docker, Setting.DiscordSettings); // Add Docker and Setting.DiscordSettings
+                    break;
+            }
         }
 
         private async Task DiscordClient_GuildAvailable(SocketGuild guild)
         {
+            var socketGuildUser = _discordClient.GetUser(guild.OwnerId) as SocketGuildUser;
+            var userRoles = socketGuildUser.Roles;
+            var sections = _dockerCommand.GetSectionsForRoles(Setting.DiscordSettings, userRoles);
+
             await Task.Run(() =>
             {
-                guild.CreateApplicationCommandAsync(DockerCommand.Create());
+                guild.CreateApplicationCommandAsync(DockerCommand.Create(sections));
                 guild.CreateApplicationCommandAsync(TestCommand.Create());
                 guild.CreateApplicationCommandAsync(ListCommand.Create());
                 guild.CreateApplicationCommandAsync(AdminCommand.Create());
@@ -112,7 +112,6 @@ namespace DD_Bot.Application.Services
                 guild.CreateApplicationCommandAsync(RoleCommand.Create());
                 guild.CreateApplicationCommandAsync(PermissionCommand.Create());
             });
-            
         }
 
         private Task DiscordClient_MessageReceived(SocketMessage arg)

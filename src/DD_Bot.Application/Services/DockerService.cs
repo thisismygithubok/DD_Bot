@@ -86,6 +86,15 @@ namespace DD_Bot.Application.Services
         {
             await _client.Containers.RestartContainerAsync(id, new ContainerRestartParameters());
         }
+
+        // New method to get containers by section
+        public List<string> GetContainersBySection(string section)
+        {
+            return DockerStatus
+                .Where(container => container.Labels.ContainsKey("section") && container.Labels["section"] == section)
+                .Select(container => container.Names[0])
+                .ToList();
+        }
         
         public void Start()
         {
