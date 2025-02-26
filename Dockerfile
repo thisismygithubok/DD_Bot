@@ -17,6 +17,6 @@ RUN apt-get update && apt-get install -y procps gawk
 
 # Allow all users access to this so we can run the container as non-root.
 RUN chmod -R 775 /app
-USER root
+USER nonroot
 
 ENTRYPOINT ["dotnet", "DD_Bot.Bot.dll"]
