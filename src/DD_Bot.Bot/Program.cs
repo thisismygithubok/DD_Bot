@@ -55,7 +55,8 @@ var services = new ServiceCollection()
             options.IncludeScopes = false;
             options.DisableColors = true;
             options.TimestampFormat = "hh:mm:ss ";
-        }))
+        })
+    )
     .AddScoped(_ => configuration)
     .AddScoped(_ => settingsFile)
     .AddSingleton<IDiscordService, DiscordService>()

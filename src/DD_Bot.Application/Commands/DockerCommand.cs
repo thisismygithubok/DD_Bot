@@ -4,10 +4,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Discord;
+using Discord.Rest;
 using Discord.WebSocket;
 using Discord.Interactions;
+using Docker.DotNet.Models;
 using DD_Bot.Domain;
 using DD_Bot.Application.Services;
+using Microsoft.Extensions.Logging;
 
 namespace DD_Bot.Application.Commands
 {
@@ -15,69 +18,65 @@ namespace DD_Bot.Application.Commands
     {
         private readonly DiscordSocketClient _discord;
         private readonly DockerService _dockerService;
+        private readonly DiscordSettings _settings;
+        private readonly ILogger<DockerCommand> _logger;
 
-        public DockerCommand(DiscordSocketClient discord, DockerService dockerService)
+        public DockerCommand(DiscordSocketClient discord, DockerService dockerService, DiscordSettings settings, ILogger<DockerCommand> logger)
         {
             _discord = discord;
             _dockerService = dockerService;
+            _settings = settings;
+            _logger = logger;
         }
 
-        #region CreateCommand
+        public async Task InitializeCommands()
+        {
+            try
+            {
+                var commandProps = DockerCommand.Create();
+                
+                // Register commands globally
+                await _discord.CreateGlobalApplicationCommandAsync(commandProps);
+                _logger.LogInformation("Global commands registered.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"InitializeCommands Exception: {ex.Message}\n{ex.StackTrace}");
+            }
+        }
 
-        public static ApplicationCommandProperties Create(List<string> sections)
+        public static ApplicationCommandProperties Create()
         {
             var builder = new SlashCommandBuilder()
             {
                 Name = "docker",
-                Description = "Issue a command to Docker"
+                Description = "Execute a command on a Docker container"
             };
 
-            builder.AddOption("section",
-                ApplicationCommandOptionType.String,
-                "choose a section",
-                true,
-                choices: sections.Select(section => new ApplicationCommandOptionChoiceProperties
-                {
-                    Name = section,
-                    Value = section
-                }).ToArray());
-
-            builder.AddOption("dockername",
-                ApplicationCommandOptionType.String,
-                "choose a container",
-                true);
-
-            builder.AddOption("command",
-                ApplicationCommandOptionType.String,
-                "choose a command",
-                true,
-                choices: new[]
-                {
-                    new ApplicationCommandOptionChoiceProperties()
-                    {
-                        Name = "start",
-                        Value = "start",
-                    },
-                    new ApplicationCommandOptionChoiceProperties()
-                    {
-                        Name = "stop",
-                        Value = "stop",
-                    },
-                    new ApplicationCommandOptionChoiceProperties()
-                    {
-                        Name = "restart",
-                        Value = "restart",
-                    },
-                });
+            builder.AddOption(new SlashCommandOptionBuilder()
+                .WithName("command")
+                .WithDescription("Choose a command")
+                .WithRequired(true)
+                .WithType(ApplicationCommandOptionType.String)
+                .AddChoice("Start", "start")
+                .AddChoice("Stop", "stop")
+                .AddChoice("Restart", "restart")
+            );
 
             return builder.Build();
         }
 
-        #endregion
-
-        public List<string> GetSectionsForRoles(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles)
+        public List<string> GetSectionsForUser(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles, ulong userId)
         {
             var sections = new HashSet<string>();
+
+            // **Grant access to all sections if the user is an admin**
+            if (settings.AdminIDs.Contains(userId))
+            {
+                return settings.SectionOrder;
+            }
+
+            // Existing logic to get sections based on roles
             foreach (var role in roles)
             {
                 if (settings.RoleStartPermissions.ContainsKey(role.Id))
@@ -89,104 +88,244 @@ namespace DD_Bot.Application.Commands
                     sections.UnionWith(settings.RoleStopPermissions[role.Id]);
                 }
             }
+
             return sections.ToList();
         }
 
-        #region InteractiveComponents
-
         public async Task HandleSectionSelect(SocketMessageComponent component, DockerService dockerService, DiscordSettings settings)
         {
-            var section = component.Data.Values.First();
-            var socketUser = component.User as SocketGuildUser;
-            var userRoles = socketUser.Roles;
+            try
+            {
+                _logger.LogDebug("HandleSectionSelect: Entered method");
 
-            var validContainers = ValidateSectionLabels(dockerService, settings, userRoles)
-                                  .Where(c => c.Contains(section))
-                                  .ToList();
+                var selectedSection = component.Data.Values.First();
+                var commandFromCustomId = component.Data.CustomId.Split(':')[1]; // Extract command from CustomId
+                _logger.LogDebug($"HandleSectionSelect: Selected section - {selectedSection}, Command - {commandFromCustomId}");
 
-            var containerDropdown = new SelectMenuBuilder()
-                .WithPlaceholder("Select a container")
-                .WithCustomId("container_select");
+                var socketUser = component.User as SocketGuildUser;
+                var userRoles = socketUser.Roles;
 
-            validContainers.ForEach(container =>
-                containerDropdown.AddOption(new SelectMenuOptionBuilder().WithLabel(container).WithValue(container))
-            );
+                var validContainers = GetValidContainersForUser(dockerService, settings, selectedSection, component.User.Id, userRoles);
 
-            var builder = new ComponentBuilder().WithSelectMenu(containerDropdown);
+                if (!validContainers.Any())
+                {
+                    await component.RespondAsync("You have no access to containers in this section.", ephemeral: true);
+                    _logger.LogDebug("HandleSectionSelect: User has no valid containers.");
+                    return;
+                }
 
-            await component.RespondAsync("Please select a container:", components: builder.Build());
+                var selectMenu = new SelectMenuBuilder()
+                    .WithPlaceholder("Choose a container")
+                    .WithCustomId($"container_select:{commandFromCustomId}:{selectedSection}"); // Embed command and section in CustomId
+
+                foreach (var container in validContainers)
+                {
+                    selectMenu.AddOption(container.Names[0], container.Names[0]);
+                }
+
+                var componentBuilder = new ComponentBuilder()
+                    .WithSelectMenu(selectMenu);
+
+                await component.RespondAsync("Please select a container:", components: componentBuilder.Build(), ephemeral: true);
+
+                _logger.LogDebug("HandleSectionSelect: Finished");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"HandleSectionSelect: Exception - {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
+        private List<ContainerListResponse> GetValidContainersForUser(DockerService dockerService, DiscordSettings settings, string section, ulong userId, IReadOnlyCollection<SocketRole> userRoles)
+        {
+            var containers = dockerService.DockerStatus;
+
+            // Filter containers by section label
+            var containersInSection = containers
+                .Where(c => c.Labels != null && c.Labels.ContainsKey("section") && c.Labels["section"] == section)
+                .ToList();
+
+            // **Grant access to all containers if the user is an admin**
+            if (settings.AdminIDs.Contains(userId))
+            {
+                return containersInSection;
+            }
+
+            var validContainers = new List<ContainerListResponse>();
+
+            foreach (var container in containersInSection)
+            {
+                bool authorized = false;
+                var containerName = container.Names[0];
+
+                // Check user permissions
+                if (settings.UserStartPermissions.ContainsKey(userId) && settings.UserStartPermissions[userId].Contains(containerName))
+                {
+                    authorized = true;
+                }
+
+                // Check role permissions
+                foreach (var role in userRoles)
+                {
+                    if (settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(section))
+                    {
+                        authorized = true;
+                        break;
+                    }
+                    if (settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(section))
+                    {
+                        authorized = true;
+                        break;
+                    }
+                }
+
+                if (authorized)
+                {
+                    validContainers.Add(container);
+                }
+            }
+
+            return validContainers;
         }
 
         public async Task HandleContainerSelect(SocketMessageComponent component, DockerService dockerService, DiscordSettings settings)
         {
-            var containerName = component.Data.Values.First();
+            try
+            {
+                _logger.LogDebug("HandleContainerSelect: Entered method");
 
-            var commandDropdown = new SelectMenuBuilder()
-                .WithPlaceholder("Select a command")
-                .WithCustomId("command_select")
-                .AddOption(new SelectMenuOptionBuilder().WithLabel("start").WithValue("start"))
-                .AddOption(new SelectMenuOptionBuilder().WithLabel("stop").WithValue("stop"))
-                .AddOption(new SelectMenuOptionBuilder().WithLabel("restart").WithValue("restart"));
+                var containerName = component.Data.Values.First();
+                var ids = component.Data.CustomId.Split(':');
+                var selectedCommand = ids[1];
+                var selectedSection = ids[2];
+                _logger.LogDebug($"HandleContainerSelect: Selected container - {containerName}, Command - {selectedCommand}, Section - {selectedSection}");
 
-            var builder = new ComponentBuilder().WithSelectMenu(commandDropdown);
+                var commandArgs = new List<KeyValuePair<string, object>>
+                {
+                    new KeyValuePair<string, object>("command", selectedCommand),
+                    new KeyValuePair<string, object>("dockername", containerName),
+                };
 
-            await component.RespondAsync($"Container `{containerName}` selected. Please choose a command:", components: builder.Build());
+                var context = new SocketInteractionContext<SocketMessageComponent>(_discord, component);
+
+                await component.RespondAsync($"Processing your request to {selectedCommand} `{containerName}`...");
+
+                _logger.LogDebug("HandleContainerSelect: About to call ExecuteInternal");
+
+                await ExecuteInternal(context, commandArgs, settings);
+
+                _logger.LogDebug("HandleContainerSelect: Finished ExecuteInternal");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"HandleContainerSelect: Exception - {ex.Message}\n{ex.StackTrace}");
+            }
         }
-
-        #endregion
-
-        #region ExecuteCommand
 
         public async Task HandleSlashCommand(SocketSlashCommand command, DockerService dockerService, DiscordSettings settings)
         {
-            await command.RespondAsync("Processing your request...");
+            try
+            {
+                _logger.LogDebug("HandleSlashCommand: Entered method");
 
-            var commandArgs = command.Data.Options
-                .Select(option => new KeyValuePair<string, object>(option.Name, option.Value))
-                .ToList();
+                // Get the selected command
+                var selectedCommand = command.Data.Options.First().Value.ToString();
+                _logger.LogDebug($"HandleSlashCommand: Selected command - {selectedCommand}");
 
-            var context = new SocketInteractionContext<SocketSlashCommand>(_discord, command);
+                var socketUser = command.User as SocketGuildUser;
+                var userRoles = socketUser.Roles;
+                var userId = command.User.Id;
 
-            Console.WriteLine("HandleSlashCommand: About to call ExecuteInternal");
+                // Get valid sections for the user
+                var sections = GetSectionsForUser(settings, userRoles, userId);
 
-            await ExecuteInternal(context, commandArgs, settings);
+                if (!sections.Any())
+                {
+                    await command.RespondAsync("You have no access to any sections.", ephemeral: true);
+                    _logger.LogDebug("HandleSlashCommand: User has no valid sections.");
+                    return;
+                }
 
-            Console.WriteLine("HandleSlashCommand: Finished ExecuteInternal");
+                var selectMenu = new SelectMenuBuilder()
+                    .WithPlaceholder("Choose a section")
+                    .WithCustomId($"section_select:{selectedCommand}"); // Embed selected command in CustomId
+
+                foreach (var section in sections)
+                {
+                    selectMenu.AddOption(section, section);
+                }
+
+                var component = new ComponentBuilder()
+                    .WithSelectMenu(selectMenu)
+                    .Build();
+
+                await command.RespondAsync("Please select a section:", components: component, ephemeral: true);
+
+                _logger.LogDebug("HandleSlashCommand: Finished");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"HandleSlashCommand: Exception - {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
         public async Task HandleCommandSelect(SocketMessageComponent component, DockerService dockerService, DiscordSettings settings)
         {
-            var command = component.Data.Values.First();
-            var containerName = component.Message.Content.Split('`')[1];
-
-            var commandArgs = new List<KeyValuePair<string, object>>
+            try
             {
-                new KeyValuePair<string, object>("command", command),
-                new KeyValuePair<string, object>("dockername", containerName),
-            };
+                _logger.LogDebug("HandleCommandSelect: Entered method");
 
-            var context = new SocketInteractionContext<SocketMessageComponent>(_discord, component);
+                var command = component.Data.Values.First();
+                _logger.LogDebug($"HandleCommandSelect: Selected command - {command}");
 
-            await component.RespondAsync("Processing your request...");
+                var containerName = ExtractContainerNameFromMessage(component.Message.Content);
+                _logger.LogDebug($"HandleCommandSelect: Extracted container name - {containerName}");
 
-            Console.WriteLine("HandleCommandSelect: About to call ExecuteInternal");
+                var commandArgs = new List<KeyValuePair<string, object>>
+                {
+                    new KeyValuePair<string, object>("command", command),
+                    new KeyValuePair<string, object>("dockername", containerName),
+                };
 
-            await ExecuteInternal(context, commandArgs, settings);
+                var context = new SocketInteractionContext<SocketMessageComponent>(_discord, component);
 
-            Console.WriteLine("HandleCommandSelect: Finished ExecuteInternal");
+                await component.RespondAsync("Processing your request...");
+
+                _logger.LogDebug("HandleCommandSelect: About to call ExecuteInternal");
+
+                await ExecuteInternal(context, commandArgs, settings);
+
+                _logger.LogDebug("HandleCommandSelect: Finished ExecuteInternal");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"HandleCommandSelect: Exception - {ex.Message}\n{ex.StackTrace}");
+            }
+        }
+
+        private string ExtractContainerNameFromMessage(string messageContent)
+        {
+            // Assume the message contains "Please select a command for container: `containerName`"
+            var pattern = @"`([^`]+)`";
+            var match = System.Text.RegularExpressions.Regex.Match(messageContent, pattern);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+            return string.Empty;
         }
 
         private async Task ExecuteInternal<T>(SocketInteractionContext<T> context, List<KeyValuePair<string, object>> commandArgs, DiscordSettings settings) where T : SocketInteraction
         {
-            Console.WriteLine("ExecuteInternal: Entered method");
+            _logger.LogDebug("ExecuteInternal: Entered method");
 
             var command = commandArgs.First(arg => arg.Key == "command").Value as string;
             var dockerName = commandArgs.First(arg => arg.Key == "dockername").Value as string;
 
-            Console.WriteLine($"ExecuteInternal: Command - {command}, Docker Name - {dockerName}");
+            _logger.LogDebug($"ExecuteInternal: Command - {command}, Docker Name - {dockerName}");
 
             await _dockerService.DockerUpdate();
-            Console.WriteLine("ExecuteInternal: DockerUpdate called");
+            _logger.LogDebug("ExecuteInternal: DockerUpdate called");
 
             bool authorized = true;
 
@@ -197,7 +336,7 @@ namespace DD_Bot.Application.Commands
                 var guild = socketUser.Guild;
                 var userRoles = guild.GetUser(socketUser.Id).Roles;
 
-                Console.WriteLine("ExecuteInternal: Checking user permissions");
+                _logger.LogDebug("ExecuteInternal: Checking user permissions");
 
                 switch (command)
                 {
@@ -244,16 +383,16 @@ namespace DD_Bot.Application.Commands
 
                 if (!authorized)
                 {
-                    await context.Interaction.RespondAsync("You are not allowed to use this command");
-                    Console.WriteLine("ExecuteInternal: User not authorized");
+                    _logger.LogError("ExecuteInternal: User not authorized");
+                    await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = "You are not allowed to use this command");
                     return;
                 }
             }
 
             if (string.IsNullOrEmpty(dockerName))
             {
-                await context.Interaction.RespondAsync("No container name has been specified");
-                Console.WriteLine("ExecuteInternal: No container name specified");
+                _logger.LogError("ExecuteInternal: No container name specified");
+                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = "No container name has been specified");
                 return;
             }
 
@@ -261,75 +400,95 @@ namespace DD_Bot.Application.Commands
 
             if (docker == null)
             {
-                await context.Interaction.RespondAsync("Container with the name ***" + dockerName + "*** doesn't exist");
-                Console.WriteLine("ExecuteInternal: Docker container not found");
+                _logger.LogError("ExecuteInternal: Docker container not found");
+                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = "Container with the name ***" + dockerName + "*** doesn't exist");
                 return;
             }
 
             var dockerId = docker.ID;
 
-            Console.WriteLine($"ExecuteInternal: Docker ID - {dockerId}");
+            _logger.LogDebug($"ExecuteInternal: Docker ID - {dockerId}");
 
             switch (command)
             {
                 case "start":
-                    Console.WriteLine("ExecuteInternal: Command is start");
+                    _logger.LogDebug("ExecuteInternal: Command is start");
                     if (_dockerService.RunningDockers.Contains(dockerName))
                     {
-                        await context.Interaction.RespondAsync(dockerName + " is already running");
-                        Console.WriteLine("ExecuteInternal: Docker container already running");
+                        _logger.LogDebug("ExecuteInternal: Docker container already running");
+                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = dockerName + " is already running");
                         return;
                     }
+                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStart");
                     await _dockerService.DockerCommandStart(dockerId);
-                    Console.WriteLine("ExecuteInternal: DockerCommandStart called");
+                    _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
                     break;
                 case "stop":
-                case "restart":
-                    Console.WriteLine($"ExecuteInternal: Command is {command}");
-                    if (_dockerService.StoppedDockers.Contains(dockerName))
-                    {
-                        await context.Interaction.RespondAsync(dockerName + " is already stopped");
-                        Console.WriteLine("ExecuteInternal: Docker container already stopped");
-                        return;
-                    }
+                    _logger.LogDebug("ExecuteInternal: Command is stop");
+                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStop");
                     await _dockerService.DockerCommandStop(dockerId);
-                    Console.WriteLine("ExecuteInternal: DockerCommandStop called");
+                    _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
+                    break;
+                case "restart":
+                    _logger.LogDebug("ExecuteInternal: Command is restart");
+                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStop");
+                    await _dockerService.DockerCommandStop(dockerId);
+                    _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
+                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStart");
+                    await _dockerService.DockerCommandStart(dockerId);
+                    _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
                     break;
             }
 
-            await context.Interaction.RespondAsync("Command has been sent. Awaiting response. This will take up to " + _dockerService.Settings.Retries * _dockerService.Settings.TimeBeforeRetry + " Seconds.");
-            Console.WriteLine("ExecuteInternal: Command sent, awaiting response");
-
             for (int i = 0; i < _dockerService.Settings.Retries; i++)
             {
-                Console.WriteLine($"ExecuteInternal: Retry {i} - Sleeping for {_dockerService.Settings.TimeBeforeRetry} seconds");
-                Thread.Sleep(TimeSpan.FromSeconds(_dockerService.Settings.TimeBeforeRetry));
+                await Task.Delay(TimeSpan.FromSeconds(_dockerService.Settings.TimeBeforeRetry));
                 await _dockerService.DockerUpdate();
-                Console.WriteLine($"ExecuteInternal: DockerUpdate called in retry {i}");
 
                 switch (command)
                 {
                     case "start":
                         if (_dockerService.RunningDockers.Contains(dockerName))
                         {
-                            await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " has been started");
-                            Console.WriteLine("ExecuteInternal: Docker container started");
+                            _logger.LogDebug("ExecuteInternal: Docker container started");
+                            try
+                            {
+                                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been started");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                            }
                             return;
                         }
                         break;
                     case "stop":
                         if (_dockerService.StoppedDockers.Contains(dockerName))
                         {
-                            await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " has been stopped");
-                            Console.WriteLine("ExecuteInternal: Docker container stopped");
+                            _logger.LogDebug("ExecuteInternal: Docker container stopped");
+                            try
+                            {
+                                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been stopped");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                            }
                             return;
                         }
                         break;
                     case "restart":
                         if (_dockerService.RunningDockers.Contains(dockerName))
                         {
-                            await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " has been restarted");
-                            Console.WriteLine("ExecuteInternal: Docker container restarted");
+                            _logger.LogDebug("ExecuteInternal: Docker container restarted");
+                            try
+                            {
+                                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been restarted");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                            }
                             return;
                         }
                         break;
@@ -337,92 +496,82 @@ namespace DD_Bot.Application.Commands
             }
 
             await _dockerService.DockerUpdate();
-            Console.WriteLine("ExecuteInternal: Final DockerUpdate called");
 
             switch (command)
             {
                 case "start":
                     if (_dockerService.RunningDockers.Contains(dockerName))
                     {
-                        await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " has been started");
-                        Console.WriteLine("ExecuteInternal: Docker container started after retries");
+                        _logger.LogDebug("ExecuteInternal: Docker container started after retries");
+                        try
+                        {
+                            await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been started");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                        }
                         return;
                     }
-                    await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " could not be started");
-                    Console.WriteLine("ExecuteInternal: Docker container could not be started after retries");
+                    _logger.LogError("ExecuteInternal: Docker container could not be started after retries");
+                    try
+                    {
+                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " could not be started");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                    }
                     break;
                 case "stop":
                     if (_dockerService.StoppedDockers.Contains(dockerName))
                     {
-                        await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " has been stopped");
-                        Console.WriteLine("ExecuteInternal: Docker container stopped after retries");
+                        _logger.LogDebug("ExecuteInternal: Docker container stopped after retries");
+                        try
+                        {
+                            await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been stopped");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                        }
                         return;
                     }
-                    await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " could not be stopped");
-                    Console.WriteLine("ExecuteInternal: Docker container could not be stopped after retries");
+                    _logger.LogError("ExecuteInternal: Docker container could not be stopped after retries");
+                    try
+                    {
+                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " could not be stopped");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                    }
                     break;
                 case "restart":
                     if (_dockerService.RunningDockers.Contains(dockerName))
                     {
-                        await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " has been restarted");
-                        Console.WriteLine("ExecuteInternal: Docker container restarted after retries");
+                        _logger.LogDebug("ExecuteInternal: Docker container restarted after retries");
+                        try
+                        {
+                            await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been restarted");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                        }
                         return;
                     }
-                    await context.Interaction.FollowupAsync(context.User.Mention + " " + dockerName + " could not be restarted");
-                    Console.WriteLine("ExecuteInternal: Docker container could not be restarted after retries");
+                    _logger.LogError("ExecuteInternal: Docker container could not be restarted after retries");
+                    try
+                    {
+                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " could not be restarted");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                    }
                     break;
             }
         }
-
-        #endregion
-
-        #region HelperMethods
-
-        private static IEnumerable<string> GetPermissionsForRoles(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles)
-        {
-            List<string> permissions = new List<string>();
-            foreach (var role in roles)
-            {
-                if (settings.RoleStartPermissions.ContainsKey(role.Id))
-                {
-                    permissions.AddRange(settings.RoleStartPermissions[role.Id]);
-                }
-                if (settings.RoleStopPermissions.ContainsKey(role.Id))
-                {
-                    permissions.AddRange(settings.RoleStopPermissions[role.Id]);
-                }
-            }
-            return permissions.Distinct();
-        }
-
-        private static IEnumerable<string> ValidateSectionLabels(DockerService dockerService, DiscordSettings settings, IReadOnlyCollection<SocketRole> roles)
-        {
-            List<string> containers = new List<string>();
-            var dockerContainers = dockerService.DockerStatus;
-            foreach (var container in dockerContainers)
-            {
-                if (container.Labels != null && container.Labels.ContainsKey("section"))
-                {
-                    var sectionLabel = container.Labels["section"];
-                    if (settings.SectionOrder.Contains(sectionLabel))
-                    {
-                        foreach (var role in roles)
-                        {
-                            if (settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(sectionLabel))
-                            {
-                                containers.Add(container.Names[0]);
-                            }
-                            if (settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(sectionLabel))
-                            {
-                                containers.Add(container.Names[0]);
-                            }
-                        }
-                    }
-                }
-            }
-            return containers.Distinct();
-        }
-
-        #endregion
     }
 }

@@ -74,17 +74,25 @@ namespace DD_Bot.Application.Services
 
         public async Task DockerCommandStart(string id)
         {
+            Console.WriteLine($"DockerService: DockerCommandStart called with id {id}");
             await _client.Containers.StartContainerAsync(id, new ContainerStartParameters());
+            Console.WriteLine($"DockerService: DockerCommandStart completed for id {id}");
         }
+
 
         public async Task DockerCommandStop(string id)
         {
+            Console.WriteLine($"DockerService: DockerCommandStop called with id {id}");
             await _client.Containers.StopContainerAsync(id, new ContainerStopParameters());
+            Console.WriteLine($"DockerService: DockerCommandStop completed for id {id}");
         }
+
 
         public async Task DockerCommandRestart(string id)
         {
+            Console.WriteLine($"DockerService: DockerCommandRestart called with id {id}");
             await _client.Containers.RestartContainerAsync(id, new ContainerRestartParameters());
+            Console.WriteLine($"DockerService: DockerCommandRestart completed for id {id}");
         }
 
         // New method to get containers by section
