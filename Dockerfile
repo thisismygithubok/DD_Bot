@@ -15,8 +15,19 @@ COPY --from=build /app/publish .
 # Install necessary packages
 RUN apt-get update && apt-get install -y procps gawk
 
-# Allow all users access to this so we can run the container as non-root.
-RUN chmod -R 775 /app
-USER nonroot
+# Create a docker group with a default GID (this will be modified at runtime)
+RUN groupadd -g 999 docker
 
-ENTRYPOINT ["dotnet", "DD_Bot.Bot.dll"]
+# Create non-root user and add them to the docker group
+RUN adduser --disabled-password --gecos "" nonroot && \
+    usermod -aG docker nonroot
+
+# Copy the entrypoint script into the image
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Optional: Ensure the /app folder has the right permissions
+RUN chown -R nonroot:docker /app && chmod -R 775 /app
+
+# Use the entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
