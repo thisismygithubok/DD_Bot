@@ -138,30 +138,6 @@ namespace DD_Bot.Application.Services
             }
         }
 
-        // private async Task DiscordClient_GuildAvailable(SocketGuild guild)
-        // {
-        //     var socketGuildUser = guild.GetUser(guild.OwnerId);
-        //     if (socketGuildUser == null)
-        //     {
-        //         Console.WriteLine("Could not find the guild owner as a SocketGuildUser.");
-        //         return;
-        //     }
-        //     var userRoles = socketGuildUser.Roles;
-        //     var userId = socketGuildUser.Id; // Or use guild.OwnerId directly
-        //     var sections = _dockerCommand.GetSectionsForUser(Setting.DiscordSettings, userRoles, userId);
-
-        //     await Task.Run(() =>
-        //     {
-        //         guild.CreateApplicationCommandAsync(DockerCommand.Create());
-        //         guild.CreateApplicationCommandAsync(TestCommand.Create());
-        //         guild.CreateApplicationCommandAsync(ListCommand.Create());
-        //         guild.CreateApplicationCommandAsync(AdminCommand.Create());
-        //         guild.CreateApplicationCommandAsync(UserCommand.Create());
-        //         guild.CreateApplicationCommandAsync(RoleCommand.Create());
-        //         guild.CreateApplicationCommandAsync(PermissionCommand.Create());
-        //     });
-        // }
-
         private Task DiscordClient_MessageReceived(SocketMessage arg)
         {
             Console.WriteLine($"{arg.Author.Username}: {arg.Content}");
