@@ -49,13 +49,17 @@ var services = new ServiceCollection()
     }))
     .AddSingleton<ILoggerFactory, LoggerFactory>()
     .AddSingleton(typeof(ILogger<>), typeof(Logger<>))
-    .AddLogging(configure => configure
-        .AddConsole(options =>
+    .AddLogging(configure =>
+    {
+        configure.AddConsole(options =>
         {
             options.IncludeScopes = false;
             options.DisableColors = true;
             options.TimestampFormat = "hh:mm:ss ";
-        }))
+        });
+        configure.SetMinimumLevel(LogLevel.Warning);
+        configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", LogLevel.Warning);
+    })
     .AddScoped(_ => configuration)
     .AddScoped(_ => settingsFile)
     .AddSingleton<IDiscordService, DiscordService>()

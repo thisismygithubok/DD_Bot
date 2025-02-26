@@ -11,7 +11,14 @@
 `"Conveniently, the program itself can be used as a Docker Container"` - ***Gadget Gabe*** \
 **NEW: Now with commands to adjust permissions** 
 
-## NEW: Container Labels for Section Outputs
+## NEW: Reworked Docker Command
+
+- Changed /docker to be an interactive command for user friendliness
+- Now, you do /docker {command} --> hit enter --> choose the section --> choose the container
+- Example:
+> ![New Docker Command](pics/DockerCommandNewInteract.png)
+
+## NEW: Section Formatting based on Container Labels
 
 - Add a label to your docker container via the labels instruction
 
@@ -29,7 +36,7 @@
         labels:
             section: "Frontend"
     }
-- Add a new section in settings.json's "DiscordSettings" to set this order based on labels
+- Add the container labels into settings.json's "SectionOrder" in the order you want them to display using /list
 
     ```json
     {
@@ -73,16 +80,12 @@
             GUILD_ID: $DISCORD_GUILD_ID # <--- New Env Var for EnableMetrics=true --->
             CHANNEL_ID: $DISCORD_CHANNEL_ID # <--- New Env Var for EnableMetrics=true --->
         restart: always
-- Add a new section in settings.json's "DiscordSettings" to enable these metrics - false by default. If set to true, you need the above new mount, and 3 new env vars.
+- Edit settings.json's "DiscordSettings" to enable these metrics - false by default. If set to true, you need the above new mount, and 3 new env vars.
 
     ```json
     {
     "DiscordSettings": {
         ...
-        "SectionOrder": [
-            "Game Servers",
-            "Frontend"
-        ],
         "EnableMetrics": false
     }
     }
@@ -124,9 +127,9 @@
 
 ## Screenshots
 
-![Show Status of Containers](pics/Listcommand.png)
-![Structured Settings File](pics/Settings.png)
-![Send Command to Server](pics/Dockercommand.png)
+![Show Status of Containers](pics/ListCommandNew.png)
+![Structured Settings File](pics/SettingsJson.png)
+![Send Command to Server](pics/DockerCommandNew.png)
 ![Bot's reply to command](pics/Dockerstart.png)
 
 ## Features
