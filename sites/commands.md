@@ -1,28 +1,29 @@
 # **Command Overview**
 
 ### /admin
-- choose a user to grant or revoke admin privilieges to
+- Choose a user to grant or revoke admin privilieges to
 - Can only be done by admins
 - An admin can not revoke his own admin privileges
 
-### /docker
-- used to start, stop or restart a docker container
-- admins are allowed to control every container
-- users can only start and stop containers that have been assigned to them by admins
-- start and stop permissions are granted separately
-- permissions can be done per user and for roles
+### /docker {command}
+- Used to start, stop, or restart a docker container
+- Admins are allowed to control every container
+- Users can only start and stop containers that have been assigned to them by admins
+- Start and stop permissions are granted separately
+- Permissions can be done per user and for roles
+- Example Command: /docker {command} --> hit enter --> choose the section --> choose the container
 
 ### /list
-- this command lists all containers the user is allowed to interact with 
-  - includes the status (running or stopped)
-- admins see every container
+- This command lists all containers the user is allowed to interact with 
+  - Includes the status (running or stopped)
+- Admins see every container
 
 ### /permission
-- lists a users permissions
-- admins can enter a user or role for permissions to be shown
+- Lists a users permissions
+- Admins can enter a user or role for permissions to be shown
 
 ### /role
-- used to grant/revoke permissions to a role
+- Used to grant/revoke permissions to a role
 
 ### /user
-- used to grant/revoke permissions to a single user
+- Used to grant/revoke permissions to a single user
