@@ -428,35 +428,79 @@ namespace DD_Bot.Application.Commands
 
             _logger.LogDebug($"ExecuteInternal: Docker ID - {dockerId}");
 
+            var isRunning = _dockerService.RunningDockers.Contains(dockerName);
+            var isStopped = _dockerService.StoppedDockers.Contains(dockerName);
+
             switch (command)
             {
                 case "start":
                     _logger.LogDebug("ExecuteInternal: Command is start");
-                    if (_dockerService.RunningDockers.Contains(dockerName))
+                    if (isRunning)
                     {
                         _logger.LogDebug("ExecuteInternal: Docker container already running");
-                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = dockerName + " is already running");
+                        await context.Interaction.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Content = $"The container `{dockerName}` is already running.";
+                            msg.Components = new ComponentBuilder().Build(); // Remove components if necessary
+                        });
                         return;
                     }
-                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStart");
+                    _logger.LogDebug("ExecuteInternal: Starting container");
                     await _dockerService.DockerCommandStart(dockerId);
                     _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
                     break;
+
                 case "stop":
                     _logger.LogDebug("ExecuteInternal: Command is stop");
-                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStop");
+                    if (isStopped)
+                    {
+                        _logger.LogDebug("ExecuteInternal: Docker container already stopped");
+                        await context.Interaction.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Content = $"The container `{dockerName}` is already stopped.";
+                            msg.Components = new ComponentBuilder().Build(); // Remove components if necessary
+                        });
+                        return;
+                    }
+                    _logger.LogDebug("ExecuteInternal: Stopping container");
                     await _dockerService.DockerCommandStop(dockerId);
                     _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
                     break;
+
                 case "restart":
                     _logger.LogDebug("ExecuteInternal: Command is restart");
-                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStop");
-                    await _dockerService.DockerCommandStop(dockerId);
-                    _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
-                    _logger.LogDebug("ExecuteInternal: Calling DockerCommandStart");
-                    await _dockerService.DockerCommandStart(dockerId);
-                    _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
+                    if (isStopped)
+                    {
+                        _logger.LogDebug("ExecuteInternal: Docker container is stopped. Starting container instead of restarting.");
+                        await _dockerService.DockerCommandStart(dockerId);
+                        _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
+
+                        // Inform the user that the container was started instead of restarted
+                        await context.Interaction.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Content = $"The container `{dockerName}` was stopped and has now been started.";
+                            msg.Components = new ComponentBuilder().Build(); // Remove components if necessary
+                        });
+                        return;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("ExecuteInternal: Restarting container");
+                        await _dockerService.DockerCommandStop(dockerId);
+                        _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
+                        await _dockerService.DockerCommandStart(dockerId);
+                        _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
+                    }
                     break;
+
+                default:
+                    _logger.LogDebug("ExecuteInternal: Unknown command");
+                    await context.Interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Content = $"Unknown command: `{command}`.";
+                        msg.Components = new ComponentBuilder().Build(); // Remove components if necessary
+                    });
+                    return;
             }
 
             for (int i = 0; i < _dockerService.Settings.Retries; i++)
