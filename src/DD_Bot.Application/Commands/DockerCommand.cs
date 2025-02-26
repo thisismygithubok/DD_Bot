@@ -148,6 +148,22 @@ namespace DD_Bot.Application.Commands
                 await component.RespondAsync("Please select a container:", components: componentBuilder.Build(), ephemeral: true);
 
                 _logger.LogDebug("HandleSectionSelect: Finished");
+                
+                // Now schedule deletion of this ephemeral message after 30 seconds.
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    try
+                    {
+                        // Delete the original interaction response.
+                        await component.DeleteOriginalResponseAsync();
+                        _logger.LogDebug("Ephemeral message deleted after delay.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to delete the ephemeral message.");
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -281,6 +297,22 @@ namespace DD_Bot.Application.Commands
                 await command.RespondAsync("Please select a section:", components: component, ephemeral: true);
 
                 _logger.LogDebug("HandleSlashCommand: Finished");
+
+                // Now schedule deletion of this ephemeral message after 30 seconds.
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    try
+                    {
+                        // Delete the original interaction response.
+                        await command.DeleteOriginalResponseAsync();
+                        _logger.LogDebug("Ephemeral message deleted after delay.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to delete the ephemeral message.");
+                    }
+                });
             }
             catch (Exception ex)
             {
