@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using System.IO;
 using Newtonsoft.Json;
 using System.Threading;
@@ -51,14 +52,16 @@ var services = new ServiceCollection()
     .AddSingleton(typeof(ILogger<>), typeof(Logger<>))
     .AddLogging(configure =>
     {
-        configure.AddConsole(options =>
+        configure.AddSimpleConsole(options =>
         {
             options.IncludeScopes = false;
-            options.DisableColors = true;
+            options.ColorBehavior = LoggerColorBehavior.Disabled;
+            options.UseUtcTimestamp = false;
             options.TimestampFormat = "hh:mm:ss ";
         });
         configure.SetMinimumLevel(LogLevel.Warning);
         configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", LogLevel.Warning);
+        configure.AddFilter("DD_Bot.Bot.DiscordUpdater", LogLevel.Information);
     })
     .AddScoped(_ => configuration)
     .AddScoped(_ => settingsFile)
@@ -71,10 +74,10 @@ if (enableMetrics)
     services.AddSingleton(sp =>
     {
         var client = sp.GetRequiredService<DiscordSocketClient>();
-        var logger = sp.GetRequiredService<ILogger<DiscordUpdater>>();
+        var logger = sp.GetRequiredService<ILogger<DD_Bot.Bot.DiscordUpdater>>();
         var guildId = ulong.Parse(Environment.GetEnvironmentVariable("GUILD_ID"));
         var channelId = ulong.Parse(Environment.GetEnvironmentVariable("CHANNEL_ID"));
-        return new DiscordUpdater(client, guildId, channelId, logger, enableMetrics);
+        return new DD_Bot.Bot.DiscordUpdater(client, guildId, channelId, logger, enableMetrics);
     });
 }
 
@@ -85,7 +88,7 @@ logger.LogDebug("Starting application...");
 
 if (enableMetrics)
 {
-    var discordUpdater = serviceProvider.GetRequiredService<DiscordUpdater>();
+    var discordUpdater = serviceProvider.GetRequiredService<DD_Bot.Bot.DiscordUpdater>();
     await discordUpdater.StartAsync();
 }
 
