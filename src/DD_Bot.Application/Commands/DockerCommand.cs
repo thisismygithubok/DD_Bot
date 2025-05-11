@@ -247,7 +247,7 @@ namespace DD_Bot.Application.Commands
 
                 _logger.LogDebug("HandleContainerSelect: About to call ExecuteInternal");
 
-                await ExecuteInternal(context, commandArgs, settings);
+                await ExecuteInternal(component, context, commandArgs, settings);
 
                 _logger.LogDebug("HandleContainerSelect: Finished ExecuteInternal");
             }
@@ -347,14 +347,10 @@ namespace DD_Bot.Application.Commands
                 var socketUser = component.User as SocketGuildUser;
                 var userRoles = socketUser.Roles;
                 var userId = component.User.Id;
+                var sections = GetSectionsForUser(settings, userRoles, userId);
 
-                var hasAccess = settings.AdminIDs.Contains(userId) ||
-                               settings.UserStartPermissions.ContainsKey(userId) && settings.UserStartPermissions[userId].Contains(section) ||
-                               settings.UserStopPermissions.ContainsKey(userId) && settings.UserStopPermissions[userId].Contains(section) ||
-                               userRoles.Any(role => settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(section)) ||
-                               userRoles.Any(role => settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(section));
-
-                if (!hasAccess)
+                // Check if the user has access to the selected section
+                if (!sections.Contains(section))
                 {
                     _logger.LogError("HandleCommandSelect: User not authorized for the selected section");
                     await component.RespondAsync("You are not authorized to access this section.", ephemeral: true);
@@ -365,7 +361,7 @@ namespace DD_Bot.Application.Commands
 
                 _logger.LogDebug("HandleCommandSelect: About to call ExecuteInternal");
 
-                await ExecuteInternal(context, commandArgs, settings);
+                await ExecuteInternal(component, context, commandArgs, settings);
 
                 _logger.LogDebug("HandleCommandSelect: Finished ExecuteInternal");
             }
@@ -399,9 +395,11 @@ namespace DD_Bot.Application.Commands
             return string.Empty;
         }
 
-        private async Task ExecuteInternal<T>(SocketInteractionContext<T> context, List<KeyValuePair<string, object>> commandArgs, DiscordSettings settings) where T : SocketInteraction
+        private async Task ExecuteInternal<T>(SocketMessageComponent component, SocketInteractionContext<T> context, List<KeyValuePair<string, object>> commandArgs, DiscordSettings settings) where T : SocketInteraction
         {
             _logger.LogDebug("ExecuteInternal: Entered method");
+            var ids = component.Data.CustomId.Split(':');
+            var selectedSection = ids[2];
 
             var command = commandArgs.First(arg => arg.Key == "command").Value as string;
             var dockerName = commandArgs.First(arg => arg.Key == "dockername").Value as string;
@@ -412,6 +410,7 @@ namespace DD_Bot.Application.Commands
             _logger.LogDebug("ExecuteInternal: DockerUpdate called");
 
             bool authorized = true;
+            bool sectionAuthorized = false;
 
             if (!settings.AdminIDs.Contains(context.User.Id))
             {
@@ -467,9 +466,132 @@ namespace DD_Bot.Application.Commands
 
                 if (!authorized)
                 {
-                    _logger.LogError("ExecuteInternal: User not authorized");
-                    await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = "You are not allowed to use this command");
-                    return;
+                    _logger.LogDebug("ExecuteInternal: Checking section permissions");
+                    _logger.LogDebug($"ExecuteInternal: Section value - {selectedSection}");
+
+                    if (!string.IsNullOrEmpty(selectedSection))
+                    {
+                        if (settings.UserStartPermissions.ContainsKey(context.User.Id) && settings.UserStartPermissions[context.User.Id].Contains(selectedSection))
+                        {
+                            sectionAuthorized = true;
+                        }
+                        if (settings.UserStopPermissions.ContainsKey(context.User.Id) && settings.UserStopPermissions[context.User.Id].Contains(selectedSection))
+                        {
+                            sectionAuthorized = true;
+                        }
+                        foreach (var role in userRoles)
+                        {
+                            if (settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(selectedSection))
+                            {
+                                sectionAuthorized = true;
+                                break;
+                            }
+                            if (settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(selectedSection))
+                            {
+                                sectionAuthorized = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!sectionAuthorized)
+                    {
+                        _logger.LogError("ExecuteInternal: User not authorized for the container or the section");
+                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = "You are not allowed to use this command in the selected container or section");
+                        return;
+                    }
+                }
+            }
+
+            var section = commandArgs.FirstOrDefault(arg => arg.Key == "section").Value as string;
+
+            if (!settings.AdminIDs.Contains(context.User.Id))
+            {
+                authorized = false;
+                var socketUser = context.User as SocketGuildUser;
+                var guild = socketUser.Guild;
+                var userRoles = guild.GetUser(socketUser.Id).Roles;
+
+                _logger.LogDebug("ExecuteInternal: Checking user permissions");
+
+                switch (command)
+                {
+                    case "start":
+                        if (settings.UserStartPermissions.ContainsKey(context.User.Id))
+                        {
+                            if (settings.UserStartPermissions[context.User.Id].Contains(dockerName))
+                            {
+                                authorized = true;
+                            }
+                        }
+                        foreach (var role in userRoles)
+                        {
+                            if (settings.RoleStartPermissions.ContainsKey(role.Id))
+                            {
+                                if (settings.RoleStartPermissions[role.Id].Contains(dockerName))
+                                {
+                                    authorized = true;
+                                }
+                            }
+                        }
+                        break;
+                    case "stop":
+                    case "restart":
+                        if (settings.UserStopPermissions.ContainsKey(context.User.Id))
+                        {
+                            if (settings.UserStopPermissions[context.User.Id].Contains(dockerName))
+                            {
+                                authorized = true;
+                            }
+                        }
+                        foreach (var role in userRoles)
+                        {
+                            if (settings.RoleStopPermissions.ContainsKey(role.Id))
+                            {
+                                if (settings.RoleStopPermissions[role.Id].Contains(dockerName))
+                                {
+                                    authorized = true;
+                                }
+                            }
+                        }
+                        break;
+                }
+
+                if (!authorized)
+                {
+                    _logger.LogDebug("ExecuteInternal: Checking section permissions");
+
+                    if (!string.IsNullOrEmpty(section))
+                    {
+                        if (settings.UserStartPermissions.ContainsKey(context.User.Id) && settings.UserStartPermissions[context.User.Id].Contains(section))
+                        {
+                            sectionAuthorized = true;
+                        }
+                        if (settings.UserStopPermissions.ContainsKey(context.User.Id) && settings.UserStopPermissions[context.User.Id].Contains(section))
+                        {
+                            sectionAuthorized = true;
+                        }
+                        foreach (var role in userRoles)
+                        {
+                            if (settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(section))
+                            {
+                                sectionAuthorized = true;
+                                break;
+                            }
+                            if (settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(section))
+                            {
+                                sectionAuthorized = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!sectionAuthorized)
+                    {
+                        _logger.LogError("ExecuteInternal: User not authorized for the container or the section");
+                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = "You are not allowed to use this command in the selected container or section");
+                        return;
+                    }
                 }
             }
 
@@ -700,6 +822,15 @@ namespace DD_Bot.Application.Commands
                     }
                     break;
             }
+        }
+
+        private bool HasAccessToSection(DiscordSettings settings, IReadOnlyCollection<SocketRole> userRoles, ulong userId, string section)
+        {
+            return settings.AdminIDs.Contains(userId) ||
+                   settings.UserStartPermissions.ContainsKey(userId) && settings.UserStartPermissions[userId].Contains(section) ||
+                   settings.UserStopPermissions.ContainsKey(userId) && settings.UserStopPermissions[userId].Contains(section) ||
+                   userRoles.Any(role => settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(section)) ||
+                   userRoles.Any(role => settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(section));
         }
     }
 }

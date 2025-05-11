@@ -60,7 +60,7 @@ var services = new ServiceCollection()
             options.TimestampFormat = "hh:mm:ss ";
         });
         configure.SetMinimumLevel(LogLevel.Warning);
-        configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", LogLevel.Warning);
+        configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", LogLevel.Debug);
         configure.AddFilter("DD_Bot.Bot.DiscordUpdater", LogLevel.Information);
     })
     .AddScoped(_ => configuration)
