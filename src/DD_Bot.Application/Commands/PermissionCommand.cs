@@ -81,6 +81,8 @@ namespace DD_Bot.Application.Commands
 
             List<string> startPermissions = new List<string>();
             List<string> stopPermissions = new List<string>();
+            List<string> sectionStartPermissions = new List<string>();
+            List<string> sectionStopPermissions = new List<string>();
 
             string listOwner;
             
@@ -112,15 +114,35 @@ namespace DD_Bot.Application.Commands
                         edit.Content = "Only admins are allowed to check role permissions!");
                     return;
                 }
-                
+
                 listOwner = role.Name;
                 if (settings.DiscordSettings.RoleStartPermissions.ContainsKey(role.Id))
                 {
-                    startPermissions.AddRange(settings.DiscordSettings.RoleStartPermissions[role.Id]);
+                    foreach (var permission in settings.DiscordSettings.RoleStartPermissions[role.Id])
+                    {
+                        if (settings.DiscordSettings.SectionOrder.Contains(permission))
+                        {
+                            sectionStartPermissions.Add(permission);
+                        }
+                        else
+                        {
+                            startPermissions.Add(permission);
+                        }
+                    }
                 }
                 if (settings.DiscordSettings.RoleStopPermissions.ContainsKey(role.Id))
                 {
-                    stopPermissions.AddRange(settings.DiscordSettings.RoleStopPermissions[role.Id]);
+                    foreach (var permission in settings.DiscordSettings.RoleStopPermissions[role.Id])
+                    {
+                        if (settings.DiscordSettings.SectionOrder.Contains(permission))
+                        {
+                            sectionStopPermissions.Add(permission);
+                        }
+                        else
+                        {
+                            stopPermissions.Add(permission);
+                        }
+                    }
                 }
             }
             else
@@ -158,17 +180,16 @@ namespace DD_Bot.Application.Commands
                 }
             }
 
-            if (startPermissions.Count == 0 && stopPermissions.Count == 0)
-            {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = "No permissions have been found");
-                return;
-            }
-            
+            // Combine and sort permissions
             startPermissions = startPermissions.Distinct().ToList();
             startPermissions.Sort();
             stopPermissions = stopPermissions.Distinct().ToList();
             stopPermissions.Sort();
-            
+            sectionStartPermissions = sectionStartPermissions.Distinct().ToList();
+            sectionStartPermissions.Sort();
+            sectionStopPermissions = sectionStopPermissions.Distinct().ToList();
+            sectionStopPermissions.Sort();
+
             List<ContainerPermission> permissions = new List<ContainerPermission>();
 
             foreach (var startPermission in startPermissions)
@@ -181,7 +202,6 @@ namespace DD_Bot.Application.Commands
             {
                 if ((from x in permissions select x.ContainerName).Contains(stopPermission))
                 {
-
                     permissions.Find(x => x.ContainerName == stopPermission).StopPermission = true;
                 }
                 else
@@ -191,41 +211,45 @@ namespace DD_Bot.Application.Commands
                 }
             }
 
-            if (permissions.Count == 0)
+            // Format output for sections
+            string sectionOutput = "\n**Section Permissions**\n````\n";
+            sectionOutput += "| Section Name       | Start | Stop  |\n";
+            sectionOutput += new string('-', 30) + "\n";
+
+            foreach (var section in sectionStartPermissions.Union(sectionStopPermissions))
+            {
+                sectionOutput += "| " + section.PadRight(18) + "|";
+                sectionOutput += sectionStartPermissions.Contains(section) ? "   x   |" : "       |";
+                sectionOutput += sectionStopPermissions.Contains(section) ? "   x   |\n" : "       |\n";
+            }
+            sectionOutput += "````";
+
+            if (permissions.Count == 0 && sectionStartPermissions.Count == 0 && sectionStopPermissions.Count == 0)
             {
                 await arg.ModifyOriginalResponseAsync(edit =>
                     edit.Content = "No permissions have been found for " + listOwner);
                 return;
             }
-            
-            int maxLength = 0;
 
-            foreach (var permission in permissions)
+            // Combine container and section outputs
+            string output = "**List of permissions for " + listOwner + "**\n";
+            if (permissions.Count > 0)
             {
-                if (maxLength < permission.ContainerName.Length)
-                {
-                    maxLength = permission.ContainerName.Length;
-                }
+                int maxLength = permissions.Max(p => p.ContainerName.Length);
+                maxLength = Math.Max(maxLength, 14);
+
+                string outputHeader = "\n**Container Permissions**\n````\n";
+                string outputTableHeader = new string('-', maxLength + 19) 
+                                           + '\n' 
+                                           + "| ContainerName" + new string(' ', maxLength - 13) + "| Start | Stop  |\n"
+                                           + new string('-', maxLength + 19) + '\n';
+                string outputTableBody = FormatListObjects(permissions, maxLength);
+                string outputTableFooter = new string('-', maxLength + 19) + "````";
+
+                output += outputHeader + outputTableHeader + outputTableBody + outputTableFooter;
             }
 
-            if (maxLength < 14)
-            {
-                maxLength = 14;
-            }
-
-            string outputHeader = "**List of permissions for " + listOwner + "**\n```\n";
-            string outputTableHeader = new string('-', maxLength + 19) 
-                                       + '\n' 
-                                       + "| ContainerName"
-                                       + new string(' ', maxLength - 13)
-                                       + "| Start | Stop  |\n"
-                                       + new string('-', maxLength + 19) 
-                                       + '\n';
-            string outputTableBody = FormatListObjects(permissions, maxLength);
-            string outputTableFooter = new string('-', maxLength + 19)+
-                                       "```";
-
-            string output = outputHeader + outputTableHeader + outputTableBody + outputTableFooter;
+            output += sectionOutput;
 
             await arg.ModifyOriginalResponseAsync(edit => edit.Content = output);
         }

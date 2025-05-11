@@ -332,13 +332,34 @@ namespace DD_Bot.Application.Commands
                 var containerName = ExtractContainerNameFromMessage(component.Message.Content);
                 _logger.LogDebug($"HandleCommandSelect: Extracted container name - {containerName}");
 
+                var section = ExtractSectionFromMessage(component.Message.Content);
+                _logger.LogDebug($"HandleCommandSelect: Extracted section - {section}");
+
                 var commandArgs = new List<KeyValuePair<string, object>>
                 {
                     new KeyValuePair<string, object>("command", command),
-                    new KeyValuePair<string, object>("dockername", containerName),
+                    new KeyValuePair<string, object>("section", section),
                 };
 
                 var context = new SocketInteractionContext<SocketMessageComponent>(_discord, component);
+
+                // Check if the user has access to the selected section
+                var socketUser = component.User as SocketGuildUser;
+                var userRoles = socketUser.Roles;
+                var userId = component.User.Id;
+
+                var hasAccess = settings.AdminIDs.Contains(userId) ||
+                               settings.UserStartPermissions.ContainsKey(userId) && settings.UserStartPermissions[userId].Contains(section) ||
+                               settings.UserStopPermissions.ContainsKey(userId) && settings.UserStopPermissions[userId].Contains(section) ||
+                               userRoles.Any(role => settings.RoleStartPermissions.ContainsKey(role.Id) && settings.RoleStartPermissions[role.Id].Contains(section)) ||
+                               userRoles.Any(role => settings.RoleStopPermissions.ContainsKey(role.Id) && settings.RoleStopPermissions[role.Id].Contains(section));
+
+                if (!hasAccess)
+                {
+                    _logger.LogError("HandleCommandSelect: User not authorized for the selected section");
+                    await component.RespondAsync("You are not authorized to access this section.", ephemeral: true);
+                    return;
+                }
 
                 await component.RespondAsync("Processing your request...");
 
@@ -358,6 +379,18 @@ namespace DD_Bot.Application.Commands
         {
             // Assume the message contains "Please select a command for container: `containerName`"
             var pattern = @"`([^`]+)`";
+            var match = System.Text.RegularExpressions.Regex.Match(messageContent, pattern);
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+            return string.Empty;
+        }
+
+        private string ExtractSectionFromMessage(string messageContent)
+        {
+            // Assume the message contains "Please select a command for section: {section}"
+            var pattern = @"\{([^}]+)\}";
             var match = System.Text.RegularExpressions.Regex.Match(messageContent, pattern);
             if (match.Success)
             {
