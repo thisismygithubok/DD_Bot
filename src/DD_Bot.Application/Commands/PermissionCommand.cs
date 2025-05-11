@@ -212,17 +212,19 @@ namespace DD_Bot.Application.Commands
             }
 
             // Format output for sections
-            string sectionOutput = "\n**Section Permissions**\n````\n";
-            sectionOutput += "| Section Name       | Start | Stop  |\n";
-            sectionOutput += new string('-', 30) + "\n";
+            string sectionOutput = "\n**Section Permissions**\n```\n";
+            sectionOutput += new string('-', 37) + "\n";
+            sectionOutput += "| Section Name      | Start |  Stop |\n";
+            sectionOutput += new string('-', 37) + "\n";
 
             foreach (var section in sectionStartPermissions.Union(sectionStopPermissions))
             {
                 sectionOutput += "| " + section.PadRight(18) + "|";
-                sectionOutput += sectionStartPermissions.Contains(section) ? "   x   |" : "       |";
-                sectionOutput += sectionStopPermissions.Contains(section) ? "   x   |\n" : "       |\n";
+                sectionOutput += sectionStartPermissions.Contains(section) ? "   x   |" : "   |";
+                sectionOutput += sectionStopPermissions.Contains(section) ? "   x   |\n" : "   |\n";
             }
-            sectionOutput += "````";
+            sectionOutput += new string('-', 37);
+            sectionOutput += "```\n";
 
             if (permissions.Count == 0 && sectionStartPermissions.Count == 0 && sectionStopPermissions.Count == 0)
             {
@@ -236,17 +238,33 @@ namespace DD_Bot.Application.Commands
             if (permissions.Count > 0)
             {
                 int maxLength = permissions.Max(p => p.ContainerName.Length);
-                maxLength = Math.Max(maxLength, 14);
+                maxLength = Math.Max(maxLength, 14); // Ensure a minimum column width for "Container Name"
 
-                string outputHeader = "\n**Container Permissions**\n````\n";
-                string outputTableHeader = new string('-', maxLength + 19) 
-                                           + '\n' 
-                                           + "| ContainerName" + new string(' ', maxLength - 13) + "| Start | Stop  |\n"
-                                           + new string('-', maxLength + 19) + '\n';
-                string outputTableBody = FormatListObjects(permissions, maxLength);
-                string outputTableFooter = new string('-', maxLength + 19) + "````";
+                int statusColumnLength = 8; // Adjust length for "Status" column
+                int totalLength = maxLength + statusColumnLength + 4; // Adjust total length calculation
 
-                output += outputHeader + outputTableHeader + outputTableBody + outputTableFooter;
+                string outputHeader = new string('-', totalLength + 1)
+                                    + "\n| Container Name"
+                                    + new string(' ', maxLength - 14)
+                                    + " | Start | Stop  |\n" // Adjusted spacing for alignment
+                                    + new string('-', totalLength + 1)
+                                    + "\n";
+
+                string outputFooter = new string('-', totalLength + 1) + "\n" + "```";
+
+                string outputTableBody = string.Empty;
+                foreach (var permission in permissions)
+                {
+                    string containerName = permission.ContainerName.Trim('/');
+                    if (containerName.Length > maxLength)
+                    {
+                        containerName = containerName.Substring(0, maxLength - 3) + "..."; // Truncate and add ellipsis
+                    }
+                    string paddedName = containerName.PadRight(maxLength);
+                    outputTableBody += $"| {paddedName} | {(permission.StartPermission ? "   x   " : "       ")} | {(permission.StopPermission ? "   x   " : "       ")} |\n";
+                }
+
+                output += outputHeader + outputTableBody + outputFooter;
             }
 
             output += sectionOutput;

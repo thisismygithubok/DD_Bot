@@ -161,14 +161,14 @@ namespace DD_Bot.Application.Commands
             int statusColumnLength = 8; // Adjust length for "Status" column
             int totalLength = maxLength + statusColumnLength + 4; // Adjust total length calculation
 
-            string outputHeader = new string('-', totalLength + 1)
+            string outputHeader = new string('-', totalLength + 2)
                                 + "\n| Container Name"
                                 + new string(' ', maxLength - 14)
                                 + " | Status  |\n" // Adjusted spacing for alignment
-                                + new string('-', totalLength + 1)
+                                + new string('-', totalLength + 2)
                                 + "\n";
 
-            string outputFooter = new string('-', totalLength + 1) + "\n" + "```";
+            string outputFooter = new string('-', totalLength + 2) + "\n" + "```";
 
             List<ContainerSection> sections;
 

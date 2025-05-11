@@ -338,6 +338,7 @@ namespace DD_Bot.Application.Commands
                 var commandArgs = new List<KeyValuePair<string, object>>
                 {
                     new KeyValuePair<string, object>("command", command),
+                    new KeyValuePair<string, object>("dockername", containerName),
                     new KeyValuePair<string, object>("section", section),
                 };
 
