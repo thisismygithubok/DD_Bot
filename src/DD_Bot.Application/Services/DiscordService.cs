@@ -37,8 +37,10 @@ namespace DD_Bot.Application.Services
         private readonly IServiceProvider _serviceProvider;
         private readonly DiscordSocketClient _discordClient;
         private readonly DockerCommand _dockerCommand;
+        private readonly ILogger<DockerCommand> _logger;
+        private readonly ILogger<ListCommand> _listCommandLogger;
 
-        public DiscordService(IConfigurationRoot configuration, IServiceProvider serviceProvider, ILogger<DockerCommand> logger)//Discord Initialising
+        public DiscordService(IConfigurationRoot configuration, IServiceProvider serviceProvider, ILogger<DockerCommand> logger, ILogger<ListCommand> listCommandLogger)//Discord Initialising
         {
             var discordSocketConfig = new DiscordSocketConfig
             {
@@ -49,6 +51,7 @@ namespace DD_Bot.Application.Services
             _serviceProvider = serviceProvider;
             _discordClient = new DiscordSocketClient(discordSocketConfig);
             _dockerCommand = new DockerCommand(_discordClient, Docker, Setting.DiscordSettings, logger); // Create an instance of DockerCommand
+            _listCommandLogger = listCommandLogger;
         }
 
         private Settings Setting => _configuration.Get<Settings>();
@@ -97,7 +100,7 @@ namespace DD_Bot.Application.Services
                         await _dockerCommand.HandleSlashCommand(arg, Docker, Setting.DiscordSettings);
                         return;
                     case "list":
-                        ListCommand.Execute(arg, Docker, Setting.DiscordSettings, Setting.DockerSettings);
+                        ListCommand.Execute(arg, Docker, Setting.DiscordSettings, Setting.DockerSettings, _listCommandLogger);
                         return;
                     case "admin":
                         AdminCommand.Execute(arg, Setting, SettingService);

@@ -61,6 +61,7 @@ var services = new ServiceCollection()
         });
         configure.SetMinimumLevel(LogLevel.Warning);
         configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", LogLevel.Debug);
+        configure.AddFilter("DD_Bot.Application.Commands.ListCommand", LogLevel.Debug);
         configure.AddFilter("DD_Bot.Bot.DiscordUpdater", LogLevel.Information);
     })
     .AddScoped(_ => configuration)
