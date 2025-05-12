@@ -96,7 +96,7 @@ namespace DD_Bot.Bot
             {
                 var newChannelName = $"CPU: {cpuUsage}% | RAM: {memoryUsage:F1}%"; // Format RAM usage to a single decimal place
                 channel.ModifyAsync(ch => ch.Name = newChannelName).GetAwaiter().GetResult();
-                _logger.LogInformation($"Updated channel name to: {newChannelName}");
+                _logger.LogDebug($"Updated channel name to: {newChannelName}");
             }
         }
 
@@ -146,7 +146,7 @@ namespace DD_Bot.Bot
 
         private Task LogDiscord(LogMessage msg)
         {
-            _logger.LogInformation(msg.ToString());
+            _logger.LogDebug(msg.ToString());
             return Task.CompletedTask;
         }
     }

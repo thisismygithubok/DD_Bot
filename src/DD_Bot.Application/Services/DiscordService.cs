@@ -39,19 +39,22 @@ namespace DD_Bot.Application.Services
         private readonly DockerCommand _dockerCommand;
         private readonly ILogger<DockerCommand> _logger;
         private readonly ILogger<ListCommand> _listCommandLogger;
+        private readonly ILogger<AdminCommand> _adminCommandLogger;
 
-        public DiscordService(IConfigurationRoot configuration, IServiceProvider serviceProvider, ILogger<DockerCommand> logger, ILogger<ListCommand> listCommandLogger)//Discord Initialising
+        public DiscordService(IConfigurationRoot configuration, IServiceProvider serviceProvider, ILogger<DockerCommand> logger, ILogger<ListCommand> listCommandLogger, ILogger<AdminCommand> adminCommandLogger)//Discord Initialising
         {
             var discordSocketConfig = new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages
+                GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMembers | GatewayIntents.GuildMessages
             };
 
             _configuration = configuration;
             _serviceProvider = serviceProvider;
             _discordClient = new DiscordSocketClient(discordSocketConfig);
             _dockerCommand = new DockerCommand(_discordClient, Docker, Setting.DiscordSettings, logger); // Create an instance of DockerCommand
+            _logger = logger;
             _listCommandLogger = listCommandLogger;
+            _adminCommandLogger = adminCommandLogger;
         }
 
         private Settings Setting => _configuration.Get<Settings>();
@@ -103,7 +106,7 @@ namespace DD_Bot.Application.Services
                         ListCommand.Execute(arg, Docker, Setting.DiscordSettings, Setting.DockerSettings, _listCommandLogger);
                         return;
                     case "admin":
-                        AdminCommand.Execute(arg, Setting, SettingService);
+                        AdminCommand.Execute(arg, Setting, SettingService, _adminCommandLogger);
                         return;
                     case "user":
                         UserCommand.Execute(arg, Setting, SettingService);
@@ -126,13 +129,24 @@ namespace DD_Bot.Application.Services
         {
             try
             {
+                // Check if the interaction requires an immediate response
                 if (component.Data.CustomId.StartsWith("section_select:"))
                 {
-                    await _dockerCommand.HandleSectionSelect(component, Docker, Setting.DiscordSettings);
+                    // Defer the interaction and offload the task
+                    await component.DeferAsync();
+                    _ = Task.Run(async () =>
+                    {
+                        await _dockerCommand.HandleSectionSelect(component, Docker, Setting.DiscordSettings);
+                    });
                 }
                 else if (component.Data.CustomId.StartsWith("container_select:"))
                 {
-                    await _dockerCommand.HandleContainerSelect(component, Docker, Setting.DiscordSettings);
+                    // Defer the interaction and offload the task
+                    await component.DeferAsync();
+                    _ = Task.Run(async () =>
+                    {
+                        await _dockerCommand.HandleContainerSelect(component, Docker, Setting.DiscordSettings);
+                    });
                 }
             }
             catch (Exception ex)

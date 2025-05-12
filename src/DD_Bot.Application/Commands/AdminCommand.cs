@@ -18,11 +18,13 @@
 */
 
 using System;
+using System.Threading.Tasks;
 using Discord;
 using Discord.WebSocket;
 using DD_Bot.Application.Services;
 using System.Linq;
 using DD_Bot.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace DD_Bot.Application.Commands
 {
@@ -33,6 +35,12 @@ namespace DD_Bot.Application.Commands
         public AdminCommand(DiscordSocketClient discord)
         {
             _discord = discord;
+
+            // Ensure all members are cached
+            foreach (var guild in _discord.Guilds)
+            {
+                _ = guild.DownloadUsersAsync();
+            }
         }
 
         #region CreateCommand
@@ -76,7 +84,7 @@ namespace DD_Bot.Application.Commands
 
         #region ExecuteCommand
 
-        public static async void Execute(SocketSlashCommand arg, Settings settings, SettingsService settingsService)
+        public static async void Execute(SocketSlashCommand arg, Settings settings, SettingsService settingsService, ILogger<AdminCommand> logger)
         {
             await arg.RespondAsync("Contacting Settings Service...");
             DiscordSettings discordSettings = settings.DiscordSettings;
@@ -91,7 +99,7 @@ namespace DD_Bot.Application.Commands
                 switch (choice)
                 {
                     case "grant":
-                        Console.WriteLine("grant");
+                        logger.LogInformation("Granting admin privileges.");
                         if (discordSettings.AdminIDs.Contains(user.Id))
                         {
                             await arg.ModifyOriginalResponseAsync(edit => edit.Content = user.Username + " is already an admin!");
@@ -104,6 +112,7 @@ namespace DD_Bot.Application.Commands
                         }
                         break;
                     case "revoke":
+                        logger.LogInformation("Revoking admin privileges.");
                         if (user.Id == arg.User.Id)
                         {
                             await arg.ModifyOriginalResponseAsync(edit => edit.Content = "You are not allowed to revoke your own admin privileges!");
@@ -120,6 +129,32 @@ namespace DD_Bot.Application.Commands
                         break;
                 }
             }
+        }
+
+        #endregion
+
+        #region RegisterGuildSpecificCommand
+
+        public static async Task RegisterGuildSpecificCommand(DiscordSocketClient discord, ILogger<AdminCommand> logger)
+        {
+            // Retrieve GUILD_ID from environment variables
+            var guildIdEnv = Environment.GetEnvironmentVariable("GUILD_ID");
+            if (string.IsNullOrEmpty(guildIdEnv) || !ulong.TryParse(guildIdEnv, out var guildId))
+            {
+                logger.LogError("GUILD_ID environment variable is not set or invalid.");
+                return;
+            }
+
+            var guild = discord.GetGuild(guildId);
+            if (guild == null)
+            {
+                logger.LogError($"Guild with ID {guildId} not found.");
+                return;
+            }
+
+            var command = Create();
+            await guild.CreateApplicationCommandAsync(command);
+            logger.LogInformation("AdminCommand registered as a guild-specific command.");
         }
 
         #endregion

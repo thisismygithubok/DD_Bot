@@ -56,7 +56,7 @@ namespace DD_Bot.Application.Commands
                 
                 // Register commands globally
                 await _discord.CreateGlobalApplicationCommandAsync(commandProps);
-                _logger.LogInformation("Global commands registered.");
+                _logger.LogDebug("Global commands registered.");
             }
             catch (Exception ex)
             {
@@ -115,54 +115,44 @@ namespace DD_Bot.Application.Commands
         {
             try
             {
-                _logger.LogDebug("HandleSectionSelect: Entered method");
+                // Ensure the interaction is handled properly
+                if (component.HasResponded)
+                {
+                    await component.ModifyOriginalResponseAsync(msg => msg.Content = "Processing your request...");
+                }
+                else
+                {
+                    await component.DeferAsync();
+                }
 
+                // Perform the long-running task
                 var selectedSection = component.Data.Values.First();
-                var commandFromCustomId = component.Data.CustomId.Split(':')[1]; // Extract command from CustomId
-                _logger.LogDebug($"HandleSectionSelect: Selected section - {selectedSection}, Command - {commandFromCustomId}");
+                var commandFromCustomId = component.Data.CustomId.Split(':')[1];
 
-                var socketUser = component.User as SocketGuildUser;
-                var userRoles = socketUser.Roles;
-
-                var validContainers = GetValidContainersForUser(dockerService, settings, selectedSection, component.User.Id, userRoles);
+                var validContainers = dockerService.GetContainersBySection(selectedSection);
 
                 if (!validContainers.Any())
                 {
-                    await component.RespondAsync("You have no access to containers in this section.", ephemeral: true);
-                    _logger.LogDebug("HandleSectionSelect: User has no valid containers.");
+                    await component.ModifyOriginalResponseAsync(msg => msg.Content = "You have no access to containers in this section.");
                     return;
                 }
 
                 var selectMenu = new SelectMenuBuilder()
                     .WithPlaceholder("Choose a container")
-                    .WithCustomId($"container_select:{commandFromCustomId}:{selectedSection}"); // Embed command and section in CustomId
+                    .WithCustomId($"container_select:{commandFromCustomId}:{selectedSection}");
 
                 foreach (var container in validContainers)
                 {
-                    selectMenu.AddOption(container.Names[0], container.Names[0]);
+                    selectMenu.AddOption(container, container);
                 }
 
                 var componentBuilder = new ComponentBuilder()
                     .WithSelectMenu(selectMenu);
 
-                await component.RespondAsync("Please select a container:", components: componentBuilder.Build(), ephemeral: true);
-
-                _logger.LogDebug("HandleSectionSelect: Finished");
-                
-                // Now schedule deletion of this ephemeral message after 30 seconds.
-                _ = Task.Run(async () =>
+                await component.ModifyOriginalResponseAsync(msg =>
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                    try
-                    {
-                        // Delete the original interaction response.
-                        await component.DeleteOriginalResponseAsync();
-                        _logger.LogDebug("Ephemeral message deleted after delay.");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to delete the ephemeral message.");
-                    }
+                    msg.Content = "Please select a container:";
+                    msg.Components = componentBuilder.Build();
                 });
             }
             catch (Exception ex)
@@ -227,29 +217,40 @@ namespace DD_Bot.Application.Commands
         {
             try
             {
-                _logger.LogDebug("HandleContainerSelect: Entered method");
+                // Ensure the interaction is handled properly
+                if (component.HasResponded)
+                {
+                    await component.ModifyOriginalResponseAsync(msg => msg.Content = "Processing your request...");
+                }
+                else
+                {
+                    await component.DeferAsync();
+                }
 
+                // Perform the long-running task
                 var containerName = component.Data.Values.First();
                 var ids = component.Data.CustomId.Split(':');
                 var selectedCommand = ids[1];
-                var selectedSection = ids[2];
-                _logger.LogDebug($"HandleContainerSelect: Selected container - {containerName}, Command - {selectedCommand}, Section - {selectedSection}");
-
-                var commandArgs = new List<KeyValuePair<string, object>>
-                {
-                    new KeyValuePair<string, object>("command", selectedCommand),
-                    new KeyValuePair<string, object>("dockername", containerName),
-                };
-
                 var context = new SocketInteractionContext<SocketMessageComponent>(_discord, component);
 
-                await component.RespondAsync($"Processing your request to {selectedCommand} `{containerName}`...");
+                await component.ModifyOriginalResponseAsync(msg => msg.Content = $"Executing {selectedCommand} on container `{containerName}`...");
 
-                _logger.LogDebug("HandleContainerSelect: About to call ExecuteInternal");
+                switch (selectedCommand)
+                {
+                    case "start":
+                        await dockerService.DockerCommandStart(containerName, component.User.Id);
+                        break;
+                    case "stop":
+                        await dockerService.DockerCommandStop(containerName, component.User.Id);
+                        break;
+                    case "restart":
+                        await dockerService.DockerCommandRestart(containerName, component.User.Id);
+                        break;
+                }
 
-                await ExecuteInternal(component, context, commandArgs, settings);
-
-                _logger.LogDebug("HandleContainerSelect: Finished ExecuteInternal");
+                // Send the final response as a follow-up message
+                await component.ModifyOriginalResponseAsync(msg => msg.Content = $"Successfully executed {selectedCommand} on container `{containerName}`.");
+                await context.Interaction.FollowupAsync($"{context.User.Mention} {containerName} has been {selectedCommand}ed");
             }
             catch (Exception ex)
             {
@@ -542,7 +543,7 @@ namespace DD_Bot.Application.Commands
                         return;
                     }
                     _logger.LogDebug("ExecuteInternal: Starting container");
-                    await _dockerService.DockerCommandStart(dockerId);
+                    await _dockerService.DockerCommandStart(dockerId, context.User.Id);
                     _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
                     break;
 
@@ -559,7 +560,7 @@ namespace DD_Bot.Application.Commands
                         return;
                     }
                     _logger.LogDebug("ExecuteInternal: Stopping container");
-                    await _dockerService.DockerCommandStop(dockerId);
+                    await _dockerService.DockerCommandStop(dockerId, context.User.Id);
                     _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
                     break;
 
@@ -568,7 +569,7 @@ namespace DD_Bot.Application.Commands
                     if (isStopped)
                     {
                         _logger.LogDebug("ExecuteInternal: Docker container is stopped. Starting container instead of restarting.");
-                        await _dockerService.DockerCommandStart(dockerId);
+                        await _dockerService.DockerCommandStart(dockerId, context.User.Id);
                         _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
 
                         // Inform the user that the container was started instead of restarted
@@ -582,9 +583,9 @@ namespace DD_Bot.Application.Commands
                     else
                     {
                         _logger.LogDebug("ExecuteInternal: Restarting container");
-                        await _dockerService.DockerCommandStop(dockerId);
+                        await _dockerService.DockerCommandStop(dockerId, context.User.Id);
                         _logger.LogDebug("ExecuteInternal: DockerCommandStop completed");
-                        await _dockerService.DockerCommandStart(dockerId);
+                        await _dockerService.DockerCommandStart(dockerId, context.User.Id);
                         _logger.LogDebug("ExecuteInternal: DockerCommandStart completed");
                     }
                     break;
@@ -599,54 +600,60 @@ namespace DD_Bot.Application.Commands
                     return;
             }
 
+            _logger.LogDebug("ExecuteInternal: Entering retry loop");
             for (int i = 0; i < _dockerService.Settings.Retries; i++)
             {
+                _logger.LogDebug($"ExecuteInternal: Retry {i + 1} of {_dockerService.Settings.Retries}");
                 await Task.Delay(TimeSpan.FromSeconds(_dockerService.Settings.TimeBeforeRetry));
                 await _dockerService.DockerUpdate();
 
+                _logger.LogDebug("ExecuteInternal: Checking command state in retry loop");
                 switch (command)
                 {
                     case "start":
+                        _logger.LogDebug("ExecuteInternal: Checking if container is running");
                         if (_dockerService.RunningDockers.Contains(dockerName))
                         {
-                            _logger.LogDebug("ExecuteInternal: Docker container started");
+                            _logger.LogDebug("ExecuteInternal: Container is running");
                             try
                             {
-                                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been started");
+                                await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} has been started");
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                                _logger.LogError($"ExecuteInternal: Exception during FollowupAsync - {ex.Message}");
                             }
                             return;
                         }
                         break;
                     case "stop":
+                        _logger.LogDebug("ExecuteInternal: Checking if container is stopped");
                         if (_dockerService.StoppedDockers.Contains(dockerName))
                         {
-                            _logger.LogDebug("ExecuteInternal: Docker container stopped");
+                            _logger.LogDebug("ExecuteInternal: Container is stopped");
                             try
                             {
-                                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been stopped");
+                                await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} has been stopped");
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                                _logger.LogError($"ExecuteInternal: Exception during FollowupAsync - {ex.Message}");
                             }
                             return;
                         }
                         break;
                     case "restart":
+                        _logger.LogDebug("ExecuteInternal: Checking if container is restarted");
                         if (_dockerService.RunningDockers.Contains(dockerName))
                         {
-                            _logger.LogDebug("ExecuteInternal: Docker container restarted");
+                            _logger.LogDebug("ExecuteInternal: Container is restarted");
                             try
                             {
-                                await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been restarted");
+                                await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} has been restarted");
                             }
                             catch (Exception ex)
                             {
-                                _logger.LogError($"ExecuteInternal: Exception occurred while responding - {ex.Message}");
+                                _logger.LogError($"ExecuteInternal: Exception during FollowupAsync - {ex.Message}");
                             }
                             return;
                         }
@@ -664,7 +671,7 @@ namespace DD_Bot.Application.Commands
                         _logger.LogDebug("ExecuteInternal: Docker container started after retries");
                         try
                         {
-                            await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been started");
+                            await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} has been started");
                         }
                         catch (Exception ex)
                         {
@@ -675,7 +682,7 @@ namespace DD_Bot.Application.Commands
                     _logger.LogError("ExecuteInternal: Docker container could not be started after retries");
                     try
                     {
-                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " could not be started");
+                        await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} could not be started");
                     }
                     catch (Exception ex)
                     {
@@ -688,7 +695,7 @@ namespace DD_Bot.Application.Commands
                         _logger.LogDebug("ExecuteInternal: Docker container stopped after retries");
                         try
                         {
-                            await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been stopped");
+                            await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} has been stopped");
                         }
                         catch (Exception ex)
                         {
@@ -699,7 +706,7 @@ namespace DD_Bot.Application.Commands
                     _logger.LogError("ExecuteInternal: Docker container could not be stopped after retries");
                     try
                     {
-                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " could not be stopped");
+                        await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} could not be stopped");
                     }
                     catch (Exception ex)
                     {
@@ -712,7 +719,7 @@ namespace DD_Bot.Application.Commands
                         _logger.LogDebug("ExecuteInternal: Docker container restarted after retries");
                         try
                         {
-                            await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " has been restarted");
+                            await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} has been restarted");
                         }
                         catch (Exception ex)
                         {
@@ -723,7 +730,7 @@ namespace DD_Bot.Application.Commands
                     _logger.LogError("ExecuteInternal: Docker container could not be restarted after retries");
                     try
                     {
-                        await context.Interaction.ModifyOriginalResponseAsync(edit => edit.Content = context.User.Mention + " " + dockerName + " could not be restarted");
+                        await context.Interaction.FollowupAsync($"{context.User.Mention} {dockerName} could not be restarted");
                     }
                     catch (Exception ex)
                     {
