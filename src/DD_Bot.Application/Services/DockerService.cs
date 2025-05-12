@@ -72,27 +72,27 @@ namespace DD_Bot.Application.Services
             return counter;
         }
 
-        public async Task DockerCommandStart(string id)
+        public async Task DockerCommandStart(string id, ulong userId)
         {
-            Console.WriteLine($"DockerService: DockerCommandStart called with id {id}");
+            Console.WriteLine($"DockerService: DockerCommandStart called by user {userId} with id {id}");
             await _client.Containers.StartContainerAsync(id, new ContainerStartParameters());
-            Console.WriteLine($"DockerService: DockerCommandStart completed for id {id}");
+            Console.WriteLine($"DockerService: DockerCommandStart completed for id {id} by user {userId}");
         }
 
 
-        public async Task DockerCommandStop(string id)
+        public async Task DockerCommandStop(string id, ulong userId)
         {
-            Console.WriteLine($"DockerService: DockerCommandStop called with id {id}");
+            Console.WriteLine($"DockerService: DockerCommandStop called by user {userId} with id {id}");
             await _client.Containers.StopContainerAsync(id, new ContainerStopParameters());
-            Console.WriteLine($"DockerService: DockerCommandStop completed for id {id}");
+            Console.WriteLine($"DockerService: DockerCommandStop completed for id {id} by user {userId}");
         }
 
 
-        public async Task DockerCommandRestart(string id)
+        public async Task DockerCommandRestart(string id, ulong userId)
         {
-            Console.WriteLine($"DockerService: DockerCommandRestart called with id {id}");
+            Console.WriteLine($"DockerService: DockerCommandRestart called by user {userId} with id {id}");
             await _client.Containers.RestartContainerAsync(id, new ContainerRestartParameters());
-            Console.WriteLine($"DockerService: DockerCommandRestart completed for id {id}");
+            Console.WriteLine($"DockerService: DockerCommandRestart completed for id {id} by user {userId}");
         }
 
         // New method to get containers by section

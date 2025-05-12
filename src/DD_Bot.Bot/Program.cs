@@ -40,12 +40,16 @@ File.WriteAllText(settingsFile, JsonConvert.SerializeObject(configuration.Get<Se
 #endregion
 
 var enableMetrics = configuration.GetValue<bool>("DiscordSettings:EnableMetrics");
+var logLevel_serverMetrics = configuration.GetValue<string>("DockerSettings:LogLevel:ServerMetrics");
+var logLevel_dockerCommand = configuration.GetValue<string>("DockerSettings:LogLevel:DockerCommand");
+var logLevel_listCommand = configuration.GetValue<string>("DockerSettings:LogLevel:ListCommand");
+var logLevel_adminCommand = configuration.GetValue<string>("DockerSettings:LogLevel:AdminCommand");
 
 var services = new ServiceCollection()
     .AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
     {
         LogLevel = LogSeverity.Warning, // Set log level to Warning to reduce additional info logs
-        GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.GuildMessageReactions,
+        GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.GuildMessageReactions | GatewayIntents.GuildMembers,
         MessageCacheSize = 100
     }))
     .AddSingleton<ILoggerFactory, LoggerFactory>()
@@ -60,8 +64,10 @@ var services = new ServiceCollection()
             options.TimestampFormat = "hh:mm:ss ";
         });
         configure.SetMinimumLevel(LogLevel.Warning);
-        configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", LogLevel.Warning);
-        configure.AddFilter("DD_Bot.Bot.DiscordUpdater", LogLevel.Information);
+        configure.AddFilter("DD_Bot.Application.Commands.DockerCommand", Enum.Parse<LogLevel>(logLevel_dockerCommand));
+        configure.AddFilter("DD_Bot.Application.Commands.AdminCommand", Enum.Parse<LogLevel>(logLevel_adminCommand));
+        configure.AddFilter("DD_Bot.Application.Commands.ListCommand", Enum.Parse<LogLevel>(logLevel_listCommand));
+        configure.AddFilter("DD_Bot.Bot.DiscordUpdater", Enum.Parse<LogLevel>(logLevel_serverMetrics));
     })
     .AddScoped(_ => configuration)
     .AddScoped(_ => settingsFile)

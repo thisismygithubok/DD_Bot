@@ -26,15 +26,19 @@ using DD_Bot.Domain;
 using System.Linq;
 using Docker.DotNet.Models;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using System.Text;
 
 namespace DD_Bot.Application.Commands
 {
-    internal class ListCommand
+    public class ListCommand
     {
         private DiscordSocketClient _discord;
-        public ListCommand(DiscordSocketClient discord)
+        private readonly ILogger<ListCommand> _logger;
+        public ListCommand(DiscordSocketClient discord, ILogger<ListCommand> logger)
         {
             _discord = discord;
+            _logger = logger;
         }
 
         #region CreateCommand
@@ -50,9 +54,39 @@ namespace DD_Bot.Application.Commands
 
         #endregion
 
+        #region GetSectionsForUser
+        
+        public static List<string> GetSectionsForUser(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles, ulong userId)
+        {
+            var sections = new HashSet<string>();
+
+            // **Grant access to all sections if the user is an admin**
+            if (settings.AdminIDs.Contains(userId))
+            {
+                return settings.SectionOrder;
+            }
+
+            // Existing logic to get sections based on roles
+            foreach (var role in roles)
+            {
+                if (settings.RoleStartPermissions.ContainsKey(role.Id))
+                {
+                    sections.UnionWith(settings.RoleStartPermissions[role.Id]);
+                }
+                if (settings.RoleStopPermissions.ContainsKey(role.Id))
+                {
+                    sections.UnionWith(settings.RoleStopPermissions[role.Id]);
+                }
+            }
+
+            return sections.ToList();
+        }
+
+        #endregion
+
         #region ExecuteCommand
 
-        public static async void Execute(SocketSlashCommand arg, DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings)
+        public static async void Execute(SocketSlashCommand arg, DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings, ILogger<ListCommand> logger)
         {
             await arg.RespondAsync("Contacting Docker Service...");
             await dockerService.DockerUpdate();
@@ -64,6 +98,24 @@ namespace DD_Bot.Application.Commands
                 var guild = socketUser.Guild;
                 var socketGuildUser = guild.GetUser(socketUser.Id);
                 var userRoles = socketGuildUser.Roles;
+                var userId = arg.User.Id;
+
+                var dockerCommand = new DockerCommand(null, null, settings, null);
+                var sections = dockerCommand.GetSectionsForUser(settings, userRoles, userId);
+
+                if (socketGuildUser == null)
+                {
+                    await arg.ModifyOriginalResponseAsync(edit => edit.Content = "Failed to retrieve user data.");
+                    return;
+                }
+
+                var sectionObjects = sections.Select(sectionName => new ContainerSection
+                {
+                    SectionName = sectionName,
+                    Containers = dockerService.DockerStatus
+                        .Where(c => c.Labels != null && c.Labels.ContainsKey("section") && c.Labels["section"] == sectionName)
+                        .ToList()
+                }).ToList();
 
                 allowedContainers.AddRange(GetPermissionsForUser(settings, arg.User.Id));
                 allowedContainers.AddRange(GetPermissionsForRoles(settings, userRoles));
@@ -81,14 +133,14 @@ namespace DD_Bot.Application.Commands
             if (dockerSettings.DebugLogging)
             {
                 // Debugging output
-                Console.WriteLine("Allowed Containers (Admins):");
+                logger.LogDebug("Allowed Containers (Admins):");
                 foreach (var container in allowedContainers)
                 {
-                    Console.WriteLine(container);
+                    logger.LogDebug(container);
                 }
             }
 
-            await DisplayContainers(dockerService, settings, dockerSettings, arg, allowedContainers);
+            await DisplayContainers(dockerService, settings, dockerSettings, arg, allowedContainers, logger);
         }
 
         private static IEnumerable<string> GetPermissionsForUser(DiscordSettings settings, ulong userId)
@@ -150,8 +202,9 @@ namespace DD_Bot.Application.Commands
             return containers;
         }
 
-        private static async Task DisplayContainers(DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings, SocketSlashCommand arg, List<string> allowedContainers)
+        private static async Task DisplayContainers(DockerService dockerService, DiscordSettings settings, DockerSettings dockerSettings, SocketSlashCommand arg, List<string> allowedContainers, ILogger<ListCommand> logger)
         {
+        
             int maxLength = dockerService.DockerStatusLongestName() + 1;
             if (maxLength > 28)  // Ensure a maximum column width for "Container Name"
             {
@@ -161,103 +214,88 @@ namespace DD_Bot.Application.Commands
             int statusColumnLength = 8; // Adjust length for "Status" column
             int totalLength = maxLength + statusColumnLength + 4; // Adjust total length calculation
 
-            string outputHeader = new string('-', totalLength + 1)
-                                + "\n| Container Name"
-                                + new string(' ', maxLength - 14)
-                                + " | Status  |\n" // Adjusted spacing for alignment
-                                + new string('-', totalLength + 1)
-                                + "\n";
-
-            string outputFooter = new string('-', totalLength + 1) + "\n" + "```";
-
-            List<ContainerSection> sections;
-
-            if (settings.AdminIDs.Contains(arg.User.Id))
+            // New implementation using EmbedBuilder
+            var embed = new EmbedBuilder()
+                .WithTitle("Docker Containers")
+                .WithColor(Color.Blue);
+            
+            var socketUser = arg.User as SocketGuildUser;
+            var guild = socketUser.Guild;
+            var socketGuildUser = guild.GetUser(socketUser.Id);
+            var userRoles = socketGuildUser.Roles;
+            var userId = arg.User.Id;
+            var sections = GetSectionsForUser(settings, userRoles, userId);
+            var dockerCommand = new DockerCommand(null, null, settings, null);
+            var sectionNames = dockerCommand.GetSectionsForUser(settings, userRoles, userId);
+            var sectionObjects = sectionNames.Select(sectionName => new ContainerSection
+            
             {
-                // Admins can access all sections
-                sections = dockerService.DockerStatus
-                            .GroupBy(c => c.Labels.ContainsKey("section") ? c.Labels["section"] : "Uncategorized")
-                            .Select(g => new ContainerSection
-                            {
-                                SectionName = g.Key,
-                                Containers = g.ToList()
-                            })
-                            .ToList();
-            }
-            else
+                SectionName = sectionName,
+                Containers = dockerService.DockerStatus
+                    .Where(c => c.Labels != null && c.Labels.ContainsKey("section") && c.Labels["section"] == sectionName)
+                    .ToList()
+            }).ToList();
+
+            // Update embed logic to handle character count and split if total characters exceed 1024
+            foreach (var section in sectionObjects)
             {
-                // Get user's allowed sections
-                var allowedSections = new List<string>();
-                foreach (var roleId in settings.RoleStartPermissions.Keys)
+                var chunks = new List<string>();
+                // Build header and footer for code block formatting
+                string header = "```\n" 
+                                + new string('-', totalLength + 2) + "\n"
+                                + "| Container Name" + new string(' ', maxLength - 14) + " | Status  |\n"
+                                + new string('-', totalLength + 2) + "\n";
+                string footer = new string('-', totalLength + 2) + "\n" + "```";
+                
+                // Use a StringBuilder for better performance when building strings
+                StringBuilder currentChunk = new StringBuilder();
+                currentChunk.Append(header);
+                
+                foreach (var container in section.Containers)
                 {
-                    if (settings.RoleStartPermissions[roleId].Any(section => allowedContainers.Contains(section)))
+                    var containerName = container.Names[0].PadRight(maxLength);
+                    var status = container.Status.Contains("Up") ? "Running" : "Stopped";
+                    string line = $"| {containerName} | {status.PadRight(6)} |\n";
+                    
+                    // Check if adding this line, along with the footer, would exceed the 1024-character limit
+                    if (currentChunk.Length + line.Length + footer.Length > 1024)
                     {
-                        allowedSections.AddRange(settings.RoleStartPermissions[roleId]);
+                        // Append footer and store the chunk
+                        currentChunk.Append(footer);
+                        chunks.Add(currentChunk.ToString());
+                        
+                        // Start a new chunk with the same header
+                        currentChunk.Clear();
+                        currentChunk.Append(header);
                     }
+                    
+                    currentChunk.Append(line);
                 }
-                foreach (var roleId in settings.RoleStopPermissions.Keys)
+                
+                // Append the footer for the final chunk and store it
+                currentChunk.Append(footer);
+                chunks.Add(currentChunk.ToString());
+                
+                // Add each chunk as a separate field, marking them as continuations if necessary
+                for (int i = 0; i < chunks.Count; i++)
                 {
-                    if (settings.RoleStopPermissions[roleId].Any(section => allowedContainers.Contains(section)))
-                    {
-                        allowedSections.AddRange(settings.RoleStopPermissions[roleId]);
-                    }
+                    string fieldName = chunks.Count == 1 
+                        ? $"Section: {section.SectionName}" 
+                        : $"Section: {section.SectionName} (Part {i+1})";
+                    embed.AddField(fieldName, chunks[i], inline: false);
                 }
-                allowedSections = allowedSections.Distinct().ToList();
-
-                if (dockerSettings.DebugLogging)
-                {
-                    // Debugging output
-                    Console.WriteLine("Allowed Sections:");
-                    foreach (var section in allowedSections)
-                    {
-                        Console.WriteLine(section);
-                    }
-                }
-
-                sections = dockerService.DockerStatus
-                            .Where(c => c.Labels.ContainsKey("section") && allowedSections.Contains(c.Labels["section"]))
-                            .GroupBy(c => c.Labels["section"])
-                            .Select(g => new ContainerSection
-                            {
-                                SectionName = g.Key,
-                                Containers = g.ToList()
-                            })
-                            .ToList();
             }
 
-            if (settings.SectionOrder != null && settings.SectionOrder.Any())
+            if (embed.Fields.Count == 0)
             {
-                sections = sections
-                            .OrderBy(s => settings.SectionOrder.IndexOf(s.SectionName))
-                            .ToList();
-            }
-            else
-            {
-                sections = sections
-                            .OrderBy(s => s.SectionName)
-                            .ToList();
+                embed.WithDescription("No containers available to display.");
             }
 
-            string combinedOutput = "";
-
-            foreach (var section in sections)
+            await arg.ModifyOriginalResponseAsync(edit =>
             {
-                combinedOutput += $"**{section.SectionName}**\n```\n" + outputHeader;
-                combinedOutput += FormatListObjects(section.Containers, settings, maxLength, arg, allowedContainers);
-                combinedOutput += outputFooter;
-            }
-
-            if (dockerSettings.DebugLogging)
-            {
-                // Debugging output
-                Console.WriteLine("Combined Output:");
-                Console.WriteLine(combinedOutput);
-            }
-
-            if (combinedOutput.Length > 0)
-            {
-                await arg.ModifyOriginalResponseAsync(edit => edit.Content = combinedOutput);
-            }
+                edit.Content = null;
+                edit.Embed = embed.Build();
+            });
         }
 
         private static string FormatListObjects(List<ContainerListResponse> list, DiscordSettings settings, int maxLength, SocketSlashCommand arg, List<string> allowedContainers)
