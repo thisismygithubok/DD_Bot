@@ -56,7 +56,7 @@ namespace DD_Bot.Application.Commands
 
         #region GetSectionsForUser
         
-        public static List<string> GetSectionsForUser(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles, ulong userId)
+        public static List<string> GetSectionsForUser(DiscordSettings settings, IReadOnlyCollection<SocketRole> roles, ulong userId, ILogger<ListCommand> logger)
         {
             var sections = new HashSet<string>();
 
@@ -101,7 +101,7 @@ namespace DD_Bot.Application.Commands
                 var userId = arg.User.Id;
 
                 var dockerCommand = new DockerCommand(null, null, settings, null);
-                var sections = dockerCommand.GetSectionsForUser(settings, userRoles, userId);
+                var sections = ListCommand.GetSectionsForUser(settings, userRoles, userId, logger);
 
                 if (socketGuildUser == null)
                 {
@@ -224,9 +224,9 @@ namespace DD_Bot.Application.Commands
             var socketGuildUser = guild.GetUser(socketUser.Id);
             var userRoles = socketGuildUser.Roles;
             var userId = arg.User.Id;
-            var sections = GetSectionsForUser(settings, userRoles, userId);
+            var sections = ListCommand.GetSectionsForUser(settings, userRoles, userId, logger);
             var dockerCommand = new DockerCommand(null, null, settings, null);
-            var sectionNames = dockerCommand.GetSectionsForUser(settings, userRoles, userId);
+            var sectionNames = ListCommand.GetSectionsForUser(settings, userRoles, userId, logger);
             var sectionObjects = sectionNames.Select(sectionName => new ContainerSection
             
             {
